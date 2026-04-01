@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { INITIAL_VENDORS } from './data';
+import { ALL_VENDORS } from './data';
 import {
   Search, Plus, X, Check, Phone, Mail, Globe, ChevronDown,
   MoreVertical, Copy, Trash2, Edit3, Save, FileText,
@@ -361,7 +361,7 @@ function ThoughtsWidget() {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────
 export default function App() {
-  const [vendors, setVendors] = useState(() => load('vendors', INITIAL_VENDORS));
+  const [vendors, setVendors] = useState(() => load('vendors', ALL_VENDORS));
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [modal, setModal] = useState(null); // null | 'add' | {vendor}

@@ -50,3 +50,32 @@ export const INITIAL_VENDORS = [
   { id: 49, name: "Stephen", title: "", company: "SINYC", email: "steve@sinyc.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
   { id: 50, name: "Will Kovach", title: "", company: "Enterprise Peak", email: "wkovach@enterprisepeak.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
 ];
+
+const NEW_VENDORS = [
+  { id: 51, name: "Catherine Fox", title: "Senior Technical Recruiter", company: "LRB Group", email: "Catherine@LRBTalent.com", phone: "434.906.1081", website: "lrbgroup.net", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 52, name: "Nicholas Ricchiuto", title: "Sr. Technical Recruiter", company: "eCommQuest", email: "nricchiuto@ecommquest.com", phone: "412-260-7613", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 53, name: "Billie Jacobs", title: "Technical Recruiter", company: "K2 Partnering", email: "bjacobs@k2partnering.com", phone: "+1 617-865-8919", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 54, name: "Tristen Newell", title: "Lead Technical Recruiter", company: "Robert Half", email: "Tristen.Newell@roberthalf.com", phone: "(984) 272-3270", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 55, name: "Judi Kaplan", title: "Sr. Technical Recruiter", company: "Simone & Associates", email: "jkaplan@simone-group.com", phone: "917-513-1255", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 56, name: "George H. Ford", title: "Director", company: "The Judge Group", email: "gford@judge.com", phone: "813 877 7000 ext. 2508", website: "www.judge.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 57, name: "Evan Ball", title: "Practice Director - Vice President", company: "Robert Half Technology", email: "", phone: "919-259-3120", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 58, name: "Gowtham M", title: "Technical Recruiter", company: "Galent", email: "gowtham.m@galent.com", phone: "+1 813-212-4629", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 59, name: "John Fox", title: "", company: "World Technologies, Inc.", email: "jfox@wtinc.net", phone: "412-809-0770", website: "www.worldtecinc.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 60, name: "Mick Barry", title: "", company: "World Technologies, Inc.", email: "", phone: "941-845-4745", website: "www.worldtecinc.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 61, name: "Mary", title: "", company: "Flex IT Global", email: "mary@flexitglobal.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 62, name: "Tom Morgan", title: "", company: "Pencom", email: "tom.morgan@pencom.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 63, name: "Thomas Rella", title: "Sr. Recruiter", company: "Innova Solutions", email: "Thomas.Rella@innovasolutions.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 64, name: "Nilay", title: "", company: "Akaasa", email: "Nilay@akaasa.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 65, name: "Jordan Hargis", title: "National Technology Accounts", company: "Robert Half", email: "Jordan.Hargis@roberthalf.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 66, name: "Elangovan T", title: "Associate Strategic Consulting and Staffing", company: "Sensiple", email: "elangovan.t@sensiple.com", phone: "7322830499 ext 524", website: "www.sensiple.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 67, name: "Julianna Hurtado", title: "Senior Technical Recruiter", company: "ClarksTech LLC", email: "julianna.hurtado@clarkstech.com", phone: "540.681.9345", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 68, name: "Anthony Zielinski", title: "Technical Recruiter & Account Manager", company: "The Provato Group", email: "azielinski@theprovatogroup.com", phone: "440-263-0297", website: "www.theprovatogroup.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 69, name: "Trey Thornton", title: "", company: "Triumph Jobs", email: "tthornton@triumphjobs.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 70, name: "Amanda Sansevere", title: "Recruiter", company: "New Era Technology", email: "Amanda.Sansevere@neweratech.com", phone: "", website: "www.neweratech.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 71, name: "Michael Sapanaro", title: "", company: "The Provato Group", email: "msapanaro@theprovatogroup.com", phone: "", website: "www.theprovatogroup.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 72, name: "Stephanie", title: "", company: "Matlen Silver", email: "spares@matlensilver.com", phone: "", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 73, name: "Rachael De La Torre", title: "Talent Partner - Market Manager", company: "Kforce", email: "RDriedger@kforce.com", phone: "954.489.2626", website: "", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+  { id: 74, name: "Jas Grover", title: "Senior Staffing Consultant", company: "Beacon Hill Technologies", email: "Jgrover@beaconhillstaffing.com", phone: "608.338.8347", website: "www.beaconhillstaffing.com", emailSent: "", followUp: "", callDone: "", resumeRole: "", notes: "" },
+];
+
+export const ALL_VENDORS = INITIAL_VENDORS.concat(NEW_VENDORS);
