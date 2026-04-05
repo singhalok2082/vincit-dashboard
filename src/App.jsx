@@ -1,76 +1,78 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from './supabase';
 import { ALL_VENDORS } from './data';
-import { Search, Upload, Trash2, Filter, RotateCcw, X, Plus, ChevronDown, ChevronUp, Edit2, Clock, Calendar, GripVertical, Tag } from 'lucide-react';
 
+// ─── UTILS ────────────────────────────────────────────────────────
 const lload = (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } };
-const lsave = (k, val) => { try { localStorage.setItem(k, JSON.stringify(val)); } catch {} };
+const lsave = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-function useDebounce(value, delay) {
-  const [dv, setDv] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setDv(value), delay); return () => clearTimeout(t); }, [value, delay]);
+function useDebounce(val, ms) {
+  const [dv, setDv] = useState(val);
+  useEffect(() => { const t = setTimeout(() => setDv(val), ms); return () => clearTimeout(t); }, [val, ms]);
   return dv;
 }
-
-const C = {
-  bg: '#f8fafc', surface: '#ffffff', surfaceHover: '#f1f5f9',
-  border: '#e2e8f0', borderStrong: '#cbd5e1',
-  text: '#0f172a', textSecondary: '#475569', textMuted: '#94a3b8',
-  primary: '#2563eb', primaryLight: '#eff6ff', primaryBorder: '#bfdbfe',
-  success: '#16a34a', successLight: '#f0fdf4', successBorder: '#bbf7d0',
-  warning: '#d97706', warningLight: '#fffbeb', warningBorder: '#fde68a',
-  danger: '#dc2626', dangerLight: '#fef2f2', dangerBorder: '#fecaca',
-  purple: '#7c3aed', purpleLight: '#f5f3ff', purpleBorder: '#ddd6fe',
-  teal: '#0891b2', tealLight: '#ecfeff', tealBorder: '#a5f3fc',
-  gold: '#b45309', goldLight: '#fffbeb', goldBorder: '#fde68a',
-  core: '#059669', coreLight: '#ecfdf5', coreBorder: '#6ee7b7',
-  sidebar: '#1e293b', sidebarBorder: 'rgba(255,255,255,0.08)',
-};
 
 function formatDate(dt) {
   if (!dt) return '—';
   const d = new Date(dt);
-  const day = String(d.getDate()).padStart(2, '0');
-  const mon = d.toLocaleString('en', { month: 'short' });
-  const yr = d.getFullYear();
-  const h = String(d.getHours()).padStart(2, '0');
-  const m = String(d.getMinutes()).padStart(2, '0');
-  return `${day} ${mon} ${yr}, ${h}:${m}`;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' +
+    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
 
-const STATUS_OPTIONS = ['', 'Yes', 'No', 'Pending'];
-const STATUS_STYLE = {
-  Yes:     { bg: C.successLight, text: C.success, border: C.successBorder, label: 'Yes' },
-  No:      { bg: C.dangerLight,  text: C.danger,  border: C.dangerBorder,  label: 'No' },
-  Pending: { bg: C.warningLight, text: C.warning, border: C.warningBorder, label: 'Pending' },
-  '':      { bg: C.bg, text: C.textMuted, border: C.border, label: '—' },
-};
-const TYPE_STYLE = {
-  Prime:  { bg: C.goldLight,    text: C.gold,    border: C.goldBorder,    label: '⭐ Prime' },
-  Normal: { bg: C.primaryLight, text: C.primary, border: C.primaryBorder, label: '● Normal' },
-  Core:   { bg: C.coreLight,    text: C.core,    border: C.coreBorder,    label: '🏠 Core' },
-  '':     { bg: C.bg, text: C.textMuted, border: C.border, label: '○ —' },
-};
+// ─── RESIZABLE COLUMN HOOK ────────────────────────────────────────
+function useColumnWidths(defaults) {
+  const [widths, setWidths] = useState(() => lload('colWidths', defaults));
+  const resize = (key, w) => setWidths(prev => { const next = { ...prev, [key]: Math.max(60, w) }; lsave('colWidths', next); return next; });
+  return [widths, resize];
+}
 
-function Pill({ value, onChange, options, styleMap }) {
+// ─── STATUS CONFIG ────────────────────────────────────────────────
+const S_OPT = ['', 'Yes', 'No', 'Pending'];
+const S_STYLE = {
+  Yes:     { bg: '#f0fdf4', color: '#15803d', border: '#86efac' },
+  No:      { bg: '#fef2f2', color: '#dc2626', border: '#fca5a5' },
+  Pending: { bg: '#fffbeb', color: '#d97706', border: '#fcd34d' },
+  '':      { bg: '#f9fafb', color: '#9ca3af', border: '#e5e7eb' },
+};
+const T_STYLE = {
+  Core:    { bg: '#f0fdf4', color: '#065f46', border: '#6ee7b7' },
+  Prime:   { bg: '#fffbeb', color: '#92400e', border: '#fcd34d' },
+  Normal:  { bg: '#eff6ff', color: '#1d4ed8', border: '#93c5fd' },
+  '':      { bg: '#f9fafb', color: '#6b7280', border: '#e5e7eb' },
+};
+const T_OPT = ['', 'Normal', 'Prime', 'Core'];
+
+// ─── INLINE SELECT PILL ───────────────────────────────────────────
+function SelectPill({ value, onChange, options, styleMap }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const s = styleMap[value] || styleMap[''];
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h);
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, []);
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-      <button onClick={() => setOpen(!open)} style={{ background: s.bg, color: s.text, border: `1px solid ${s.border}`, borderRadius: 6, padding: '3px 9px', fontSize: 12, fontFamily: 'Inter', fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
-        {s.label} <ChevronDown size={9} />
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}`, borderRadius: 4, padding: '2px 8px 2px 8px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', fontWeight: 500 }}
+      >
+        {value || '—'} <span style={{ fontSize: 9, opacity: 0.7 }}>▼</span>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 9999, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', minWidth: 120, boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
-          {options.map(opt => { const st = styleMap[opt] || styleMap[''];
-            return <button key={opt} onClick={() => { onChange(opt); setOpen(false); }} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', background: 'transparent', border: 'none', color: st.text, fontSize: 13, fontFamily: 'Inter', fontWeight: 500, cursor: 'pointer' }}
-              onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
-              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>{st.label}</button>;
+        <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, zIndex: 1000, background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', minWidth: 110, overflow: 'hidden' }}>
+          {options.map(opt => {
+            const st = styleMap[opt] || styleMap[''];
+            return (
+              <button key={opt} onClick={() => { onChange(opt); setOpen(false); }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 12px', border: 'none', background: opt === value ? '#f3f4f6' : '#fff', color: st.color, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: opt === value ? 600 : 400 }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
+                onMouseLeave={e => e.currentTarget.style.background = opt === value ? '#f3f4f6' : '#fff'}
+              >
+                {opt || '— Clear'}
+              </button>
+            );
           })}
         </div>
       )}
@@ -78,174 +80,131 @@ function Pill({ value, onChange, options, styleMap }) {
   );
 }
 
-// ─── BULK TAG BAR ────────────────────────────────────────────────
-function BulkTagBar({ count, filteredCount, allFilteredSelected, onSelectAllFiltered, onClear, onBulkDelete, onBulkTag }) {
-  const [showTag, setShowTag] = useState(false);
-  const [field, setField] = useState('vendor_type');
-  const [value, setValue] = useState('Prime');
-  const [delConfirm, setDelConfirm] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setShowTag(false); };
-    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h);
-  }, []);
-
-  const FIELDS = [
-    { key: 'vendor_type', label: 'Vendor Type', opts: ['', 'Normal', 'Prime', 'Core'] },
-    { key: 'email_sent',  label: 'Email Sent',  opts: ['', 'Yes', 'No', 'Pending'] },
-    { key: 'follow_up',   label: 'Follow-Up',   opts: ['', 'Yes', 'No', 'Pending'] },
-    { key: 'call_done',   label: 'Call Done',   opts: ['', 'Yes', 'No', 'Pending'] },
-  ];
-  const selField = FIELDS.find(f => f.key === field);
-  const inp = { padding: '7px 10px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, fontFamily: 'Inter', outline: 'none' };
-
+// ─── RESIZE HANDLE ────────────────────────────────────────────────
+function ResizeHandle({ onResize }) {
+  const startX = useRef(null);
+  const onMouseDown = e => {
+    e.preventDefault();
+    startX.current = e.clientX;
+    const onMove = ev => onResize(ev.clientX - startX.current);
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
   return (
-    <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 16px', background: C.warningLight, border: `1px solid ${C.warningBorder}`, borderRadius: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{ fontSize: 14, color: C.warning, fontFamily: 'Inter', fontWeight: 700 }}>{count} rows selected</span>
-        {filteredCount > count && (
-          <button onClick={onSelectAllFiltered} style={{ fontSize: 12, color: C.primary, fontFamily: 'Inter', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, textDecoration: 'underline' }}>
-            {allFilteredSelected ? '✓ All filtered selected' : `Select all ${filteredCount} filtered rows`}
-          </button>
-        )}
-      </div>
-
-      {/* BULK TAG */}
-      <div ref={ref} style={{ position: 'relative' }}>
-        <button onClick={() => setShowTag(!showTag)} style={{ padding: '7px 14px', borderRadius: 8, background: C.primaryLight, border: `1px solid ${C.primaryBorder}`, color: C.primary, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-          <Tag size={13} /> Bulk Tag <ChevronDown size={11} />
-        </button>
-        {showTag && (
-          <div style={{ position: 'absolute', top: '110%', left: 0, zIndex: 9999, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, minWidth: 280, boxShadow: '0 12px 40px rgba(0,0,0,0.12)' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.text, fontFamily: 'Inter', marginBottom: 12 }}>Set field for {count} vendors</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div>
-                <label style={{ fontSize: 11, color: C.textMuted, fontFamily: 'Inter', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>Field</label>
-                <select value={field} onChange={e => { setField(e.target.value); setValue(''); }} style={{ ...inp, width: '100%' }}>
-                  {FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{ fontSize: 11, color: C.textMuted, fontFamily: 'Inter', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>Value</label>
-                <select value={value} onChange={e => setValue(e.target.value)} style={{ ...inp, width: '100%' }}>
-                  {(selField?.opts || []).map(o => <option key={o} value={o}>{o || '(clear)'}</option>)}
-                </select>
-              </div>
-              <button onClick={() => { onBulkTag(field, value); setShowTag(false); }}
-                style={{ padding: '9px', borderRadius: 8, background: C.primary, border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600 }}>
-                Apply to {count} vendors ✓
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* BULK DELETE */}
-      {delConfirm
-        ? <><span style={{ fontSize: 13, color: C.danger, fontFamily: 'Inter', fontWeight: 600 }}>Delete {count} permanently?</span>
-            <button onClick={() => { onBulkDelete(); setDelConfirm(false); }} style={{ padding: '7px 14px', borderRadius: 8, background: C.danger, border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600 }}>Confirm</button>
-            <button onClick={() => setDelConfirm(false)} style={{ padding: '7px 12px', borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`, color: C.textSecondary, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13 }}>Cancel</button>
-          </>
-        : <button onClick={() => setDelConfirm(true)} style={{ padding: '7px 14px', borderRadius: 8, background: C.dangerLight, border: `1px solid ${C.dangerBorder}`, color: C.danger, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Trash2 size={13} /> Delete
-          </button>
-      }
-      <button onClick={onClear} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', padding: 4 }}><X size={15} /></button>
-    </div>
+    <div onMouseDown={onMouseDown}
+      style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 4, cursor: 'col-resize', userSelect: 'none', zIndex: 10 }}
+      onMouseEnter={e => e.currentTarget.style.background = '#3b82f6'}
+      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+    />
   );
 }
 
-// ─── ADVANCED FILTER PANEL ───────────────────────────────────────
-const FILTER_FIELDS = [
-  { key: 'name', label: 'Name', type: 'text' }, { key: 'company', label: 'Company', type: 'text' },
-  { key: 'title', label: 'Title', type: 'text' }, { key: 'email', label: 'Email', type: 'text' },
-  { key: 'phone', label: 'Phone', type: 'text' }, { key: 'website', label: 'Website', type: 'text' },
+// ─── ADVANCED FILTERS ─────────────────────────────────────────────
+const F_FIELDS = [
+  { key: 'name', label: 'Name', type: 'text' },
+  { key: 'company', label: 'Company', type: 'text' },
+  { key: 'title', label: 'Title', type: 'text' },
+  { key: 'email', label: 'Email', type: 'text' },
+  { key: 'phone', label: 'Phone', type: 'text' },
+  { key: 'website', label: 'Website', type: 'text' },
   { key: 'vendor_type', label: 'Vendor Type', type: 'select', options: ['', 'Normal', 'Prime', 'Core'] },
-  { key: 'email_sent', label: 'Email Sent', type: 'select', options: STATUS_OPTIONS },
-  { key: 'follow_up', label: 'Follow-Up', type: 'select', options: STATUS_OPTIONS },
-  { key: 'call_done', label: 'Call Done', type: 'select', options: STATUS_OPTIONS },
+  { key: 'email_sent', label: 'Email Sent', type: 'select', options: S_OPT },
+  { key: 'follow_up', label: 'Follow-Up', type: 'select', options: S_OPT },
+  { key: 'call_done', label: 'Call Done', type: 'select', options: S_OPT },
+  { key: 'notes', label: 'Notes', type: 'text' },
 ];
 const TEXT_OPS = [
-  { key: 'contains', label: 'contains' }, { key: 'not_contains', label: 'does not contain' },
-  { key: 'equals', label: 'equals' }, { key: 'not_equals', label: 'is not' },
-  { key: 'is_empty', label: 'is empty' }, { key: 'is_not_empty', label: 'is not empty' },
-  { key: 'starts_with', label: 'starts with' },
+  { k: 'contains', l: 'contains' }, { k: 'not_contains', l: 'does not contain' },
+  { k: 'equals', l: 'equals' }, { k: 'not_equals', l: 'is not' },
+  { k: 'is_empty', l: 'is empty' }, { k: 'is_not_empty', l: 'is not empty' },
+  { k: 'starts_with', l: 'starts with' },
 ];
-const SELECT_OPS = [
-  { key: 'equals', label: 'is' }, { key: 'not_equals', label: 'is not' },
-  { key: 'is_empty', label: 'is empty' }, { key: 'is_not_empty', label: 'is not empty' },
+const SEL_OPS = [
+  { k: 'equals', l: 'is' }, { k: 'not_equals', l: 'is not' },
+  { k: 'is_empty', l: 'is empty' }, { k: 'is_not_empty', l: 'is not empty' },
 ];
 
-function applyFilter(v, f) {
-  const raw = (v[f.field] || '').toLowerCase().trim(), fv = (f.value || '').toLowerCase().trim();
+function matchFilter(v, f) {
+  const raw = (v[f.field] || '').toLowerCase(), fv = (f.value || '').toLowerCase();
   switch (f.op) {
-    case 'contains': return raw.includes(fv); case 'not_contains': return !raw.includes(fv);
-    case 'equals': return raw === fv; case 'not_equals': return raw !== fv;
-    case 'is_empty': return raw === ''; case 'is_not_empty': return raw !== '';
-    case 'starts_with': return raw.startsWith(fv); default: return true;
+    case 'contains': return raw.includes(fv);
+    case 'not_contains': return !raw.includes(fv);
+    case 'equals': return raw === fv;
+    case 'not_equals': return raw !== fv;
+    case 'is_empty': return raw === '';
+    case 'is_not_empty': return raw !== '';
+    case 'starts_with': return raw.startsWith(fv);
+    default: return true;
   }
 }
 
-function AdvancedFilterPanel({ filters, setFilters, conjunction, setConjunction, onClose }) {
+const PRESETS = [
+  { l: 'No Email',      f: [{ field: 'email', op: 'is_empty', value: '' }] },
+  { l: 'No Phone',      f: [{ field: 'phone', op: 'is_empty', value: '' }] },
+  { l: 'Missing Both',  f: [{ field: 'email', op: 'is_empty', value: '' }, { field: 'phone', op: 'is_empty', value: '' }], c: 'AND' },
+  { l: 'Has Phone',     f: [{ field: 'phone', op: 'is_not_empty', value: '' }] },
+  { l: 'Core Vendors',  f: [{ field: 'vendor_type', op: 'equals', value: 'Core' }] },
+  { l: 'Prime Only',    f: [{ field: 'vendor_type', op: 'equals', value: 'Prime' }] },
+  { l: 'Emailed',       f: [{ field: 'email_sent', op: 'equals', value: 'Yes' }] },
+  { l: 'Not Contacted', f: [{ field: 'email_sent', op: 'is_empty', value: '' }, { field: 'call_done', op: 'is_empty', value: '' }], c: 'AND' },
+  { l: 'CSV Imports',   f: [{ field: 'vendor_type', op: 'not_equals', value: 'Core' }] },
+];
+
+function FilterPanel({ filters, setFilters, conj, setConj, onClose }) {
   const add = () => setFilters(f => [...f, { id: Date.now(), field: 'email', op: 'is_not_empty', value: '' }]);
-  const remove = id => setFilters(f => f.filter(x => x.id !== id));
+  const rem = id => setFilters(f => f.filter(x => x.id !== id));
   const upd = (id, k, v) => setFilters(f => f.map(x => x.id === id ? { ...x, [k]: v } : x));
-  const s = { padding: '7px 10px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, fontFamily: 'Inter', outline: 'none' };
-  const PRESETS = [
-    { label: 'No Email', f: [{ field: 'email', op: 'is_empty', value: '' }] },
-    { label: 'No Phone', f: [{ field: 'phone', op: 'is_empty', value: '' }] },
-    { label: 'Missing Both', f: [{ field: 'email', op: 'is_empty', value: '' }, { field: 'phone', op: 'is_empty', value: '' }], c: 'AND' },
-    { label: 'Has Phone', f: [{ field: 'phone', op: 'is_not_empty', value: '' }] },
-    { label: 'Core Vendors', f: [{ field: 'vendor_type', op: 'equals', value: 'Core' }] },
-    { label: 'Prime Only', f: [{ field: 'vendor_type', op: 'equals', value: 'Prime' }] },
-    { label: 'Emailed', f: [{ field: 'email_sent', op: 'equals', value: 'Yes' }] },
-    { label: 'Not Contacted', f: [{ field: 'email_sent', op: 'is_empty', value: '' }, { field: 'call_done', op: 'is_empty', value: '' }], c: 'AND' },
-    { label: 'CSV Imports', f: [{ field: 'vendor_type', op: 'not_equals', value: 'Core' }] },
-  ];
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.06)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontFamily: 'Inter', fontSize: 14, color: C.text, fontWeight: 700 }}>Advanced Filters</span>
-          <span style={{ fontSize: 13, color: C.textMuted }}>Match</span>
-          <select value={conjunction} onChange={e => setConjunction(e.target.value)} style={{ ...s, padding: '5px 8px', fontWeight: 600 }}>
-            <option value="AND">ALL (AND)</option><option value="OR">ANY (OR)</option>
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, marginBottom: 12, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: '#111827' }}>Filters</span>
+          <span style={{ fontSize: 12, color: '#6b7280' }}>Match</span>
+          <select value={conj} onChange={e => setConj(e.target.value)} style={{ fontSize: 12, padding: '3px 6px', border: '1px solid #d1d5db', borderRadius: 4, outline: 'none', fontFamily: 'inherit' }}>
+            <option value="AND">ALL (AND)</option>
+            <option value="OR">ANY (OR)</option>
           </select>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={add} style={{ padding: '6px 14px', borderRadius: 8, background: C.primaryLight, border: `1px solid ${C.primaryBorder}`, color: C.primary, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}><Plus size={13} /> Add Filter</button>
-          <button onClick={() => setFilters([])} style={{ padding: '6px 12px', borderRadius: 8, background: C.dangerLight, border: `1px solid ${C.dangerBorder}`, color: C.danger, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13 }}>Clear All</button>
-          <button onClick={onClose} style={{ background: 'none', border: `1px solid ${C.border}`, color: C.textMuted, cursor: 'pointer', borderRadius: 8, padding: '6px 8px', display: 'flex' }}><X size={13} /></button>
+          <button onClick={add} style={{ padding: '4px 12px', fontSize: 12, border: '1px solid #3b82f6', borderRadius: 4, background: '#eff6ff', color: '#2563eb', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}>+ Add Filter</button>
+          <button onClick={() => setFilters([])} style={{ padding: '4px 10px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff', color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit' }}>Clear</button>
+          <button onClick={onClose} style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff', color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit' }}>✕</button>
         </div>
       </div>
-      {filters.length === 0 && <div style={{ padding: '8px 0 6px', color: C.textMuted, fontFamily: 'Inter', fontSize: 13 }}>No filters active. Use a preset or add a filter.</div>}
+
       {filters.map((f, i) => {
-        const fd = FILTER_FIELDS.find(x => x.key === f.field) || FILTER_FIELDS[0];
-        const ops = fd.type === 'select' ? SELECT_OPS : TEXT_OPS;
+        const fd = F_FIELDS.find(x => x.key === f.field) || F_FIELDS[0];
+        const ops = fd.type === 'select' ? SEL_OPS : TEXT_OPS;
         const needsVal = !['is_empty', 'is_not_empty'].includes(f.op);
+        const sel = { fontSize: 12, padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: 4, outline: 'none', fontFamily: 'inherit', background: '#fff', color: '#111827' };
         return (
-          <div key={f.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: '10px 14px', background: C.bg, borderRadius: 10, border: `1px solid ${C.border}` }}>
-            <span style={{ fontSize: 13, color: C.textMuted, fontFamily: 'Inter', minWidth: 42, fontWeight: 600 }}>{i === 0 ? 'Where' : conjunction}</span>
-            <select value={f.field} onChange={e => upd(f.id, 'field', e.target.value)} style={{ ...s, minWidth: 130 }}>{FILTER_FIELDS.map(ff => <option key={ff.key} value={ff.key}>{ff.label}</option>)}</select>
-            <select value={f.op} onChange={e => upd(f.id, 'op', e.target.value)} style={{ ...s, minWidth: 160 }}>{ops.map(op => <option key={op.key} value={op.key}>{op.label}</option>)}</select>
+          <div key={f.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, background: '#f9fafb', padding: '8px 10px', borderRadius: 6, border: '1px solid #f0f0f0' }}>
+            <span style={{ fontSize: 12, color: '#6b7280', minWidth: 36, fontWeight: 500 }}>{i === 0 ? 'Where' : conj}</span>
+            <select value={f.field} onChange={e => upd(f.id, 'field', e.target.value)} style={{ ...sel, minWidth: 120 }}>{F_FIELDS.map(ff => <option key={ff.key} value={ff.key}>{ff.label}</option>)}</select>
+            <select value={f.op} onChange={e => upd(f.id, 'op', e.target.value)} style={{ ...sel, minWidth: 140 }}>{ops.map(op => <option key={op.k} value={op.k}>{op.l}</option>)}</select>
             {needsVal && (fd.type === 'select'
-              ? <select value={f.value} onChange={e => upd(f.id, 'value', e.target.value)} style={{ ...s, minWidth: 120 }}>{(fd.options || []).map(o => <option key={o} value={o}>{o || '(empty)'}</option>)}</select>
-              : <input value={f.value || ''} onChange={e => upd(f.id, 'value', e.target.value)} placeholder="value..." style={{ ...s, flex: 1, minWidth: 120 }} />)}
+              ? <select value={f.value} onChange={e => upd(f.id, 'value', e.target.value)} style={{ ...sel, minWidth: 100 }}>{(fd.options || []).map(o => <option key={o} value={o}>{o || '(empty)'}</option>)}</select>
+              : <input value={f.value || ''} onChange={e => upd(f.id, 'value', e.target.value)} placeholder="value..." style={{ ...sel, flex: 1, minWidth: 100 }} />
+            )}
             {!needsVal && <div style={{ flex: 1 }} />}
-            <button onClick={() => remove(f.id)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', padding: 4, display: 'flex', borderRadius: 6 }}
-              onMouseEnter={e => e.currentTarget.style.color = C.danger} onMouseLeave={e => e.currentTarget.style.color = C.textMuted}><X size={14} /></button>
+            <button onClick={() => rem(f.id)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 15, padding: '0 4px', lineHeight: 1 }}
+              onMouseEnter={e => e.currentTarget.style.color = '#dc2626'} onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}>✕</button>
           </div>
         );
       })}
-      <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 11, color: C.textMuted, fontFamily: 'Inter', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Quick Presets</div>
-        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+
+      {filters.length === 0 && <div style={{ fontSize: 12, color: '#9ca3af', padding: '4px 0 8px' }}>No filters active. Add a filter or click a preset below.</div>}
+
+      <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 10, marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 7 }}>Presets</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {PRESETS.map(p => (
-            <button key={p.label} onClick={() => { setFilters(p.f.map((fi, i) => ({ ...fi, id: Date.now() + i }))); if (p.c) setConjunction(p.c); }}
-              style={{ padding: '5px 12px', borderRadius: 20, background: C.surface, border: `1px solid ${C.border}`, color: C.textSecondary, cursor: 'pointer', fontFamily: 'Inter', fontSize: 12, transition: 'all 0.1s' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = C.primary; e.currentTarget.style.color = C.primary; e.currentTarget.style.background = C.primaryLight; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textSecondary; e.currentTarget.style.background = C.surface; }}>
-              {p.label}
+            <button key={p.l} onClick={() => { setFilters(p.f.map((fi, i) => ({ ...fi, id: Date.now() + i }))); if (p.c) setConj(p.c); }}
+              style={{ padding: '4px 10px', borderRadius: 12, background: '#f3f4f6', border: '1px solid #e5e7eb', color: '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#93c5fd'; e.currentTarget.style.color = '#1d4ed8'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.borderColor = '#e5e7eb'; e.currentTarget.style.color = '#374151'; }}>
+              {p.l}
             </button>
           ))}
         </div>
@@ -254,273 +213,485 @@ function AdvancedFilterPanel({ filters, setFilters, conjunction, setConjunction,
   );
 }
 
-// ─── CSV PARSER ───────────────────────────────────────────────────
-function parseCSVRow(row) {
-  const res = []; let cur = ''; let inQ = false;
-  for (const ch of row) { if (ch === '"') { inQ = !inQ; } else if (ch === ',' && !inQ) { res.push(cur.trim()); cur = ''; } else cur += ch; }
-  res.push(cur.trim()); return res;
+// ─── CSV ──────────────────────────────────────────────────────────
+function parseRow(row) {
+  const r = []; let c = '', q = false;
+  for (const ch of row) { if (ch === '"') q = !q; else if (ch === ',' && !q) { r.push(c.trim()); c = ''; } else c += ch; }
+  r.push(c.trim()); return r;
 }
-function smartParseCSV(text) {
+function parseCSV(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
-  const hdrs = parseCSVRow(lines[0]).map(h => h.replace(/"/g, '').trim().toLowerCase());
-  const colMap = {
-    name: ['full name', 'name', 'contact name', 'full_name'], first: ['first name', 'first_name', 'firstname'], last: ['last name', 'last_name', 'lastname'],
-    title: ['job title', 'title', 'position', 'role', 'job_title'], company: ['company name', 'company', 'organization', 'firm', 'company_name', 'account'],
-    email: ['contact email address - data', 'email', 'email address', 'contact email', 'email_address', 'work email'],
-    phone: ['contact phone number - data', 'phone', 'phone number', 'mobile', 'phone_number', 'contact phone'],
-    website: ['company domain', 'website', 'url', 'domain', 'web', 'linkedin profile', 'linkedin'],
-    location: ['location', 'city', 'state', 'country', 'geography'], notes: ['notes', 'note', 'comments'],
+  const hdrs = parseRow(lines[0]).map(h => h.replace(/"/g, '').trim().toLowerCase());
+  const col = (vs) => { for (const v of vs) { const i = hdrs.indexOf(v); if (i !== -1) return i; } return -1; };
+  const cols = {
+    name: col(['full name','name','contact name']), first: col(['first name','first_name']), last: col(['last name','last_name']),
+    title: col(['job title','title','position','role']), company: col(['company name','company','organization','firm']),
+    email: col(['contact email address - data','email','email address','work email']),
+    phone: col(['contact phone number - data','phone','phone number','mobile']),
+    website: col(['company domain','website','url','domain','linkedin profile','linkedin']),
+    location: col(['location','city','country']), notes: col(['notes','note','comments']),
   };
-  const fc = vs => { for (const v of vs) { const i = hdrs.indexOf(v); if (i !== -1) return i; } return -1; };
-  const cols = {}; for (const [f, v] of Object.entries(colMap)) cols[f] = fc(v);
-  const get = (row, f) => cols[f] !== -1 ? (row[cols[f]] || '').replace(/"/g, '').trim() : '';
+  const get = (row, f) => cols[f] >= 0 ? (row[cols[f]] || '').replace(/"/g, '').trim() : '';
   return lines.slice(1).map(line => {
-    const row = parseCSVRow(line);
+    const row = parseRow(line);
     let name = get(row, 'name') || [get(row, 'first'), get(row, 'last')].filter(Boolean).join(' ');
     const company = get(row, 'company'); if (!name && !company) return null;
-    const location = get(row, 'location');
-    const notes = [get(row, 'notes'), location].filter(Boolean).join(' | ');
+    const loc = get(row, 'location'), notes = [get(row, 'notes'), loc].filter(Boolean).join(' | ');
     return { name: name || company, title: get(row, 'title'), company: company || name, email: get(row, 'email'), phone: get(row, 'phone'), website: get(row, 'website'), notes, vendor_type: '', email_sent: '', follow_up: '', call_done: '', resume_role: '' };
   }).filter(Boolean);
 }
 
-// ─── CSV MODAL ───────────────────────────────────────────────────
+// ─── MODALS ───────────────────────────────────────────────────────
+function Modal({ title, onClose, children, maxW = 560 }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 10, padding: 28, width: '100%', maxWidth: maxW, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111827' }}>{title}</h2>
+          <button onClick={onClose} style={{ background: 'none', border: '1px solid #e5e7eb', borderRadius: 6, cursor: 'pointer', width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: 16 }}>✕</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function VendorModal({ vendor, onSave, onClose }) {
+  const [f, setF] = useState(vendor ? {
+    name: vendor.name || '', title: vendor.title || '', company: vendor.company || '',
+    email: vendor.email || '', phone: vendor.phone || '', website: vendor.website || '',
+    resume_role: vendor.resume_role || '', notes: vendor.notes || '',
+    vendor_type: vendor.vendor_type || '', email_sent: vendor.email_sent || '',
+    follow_up: vendor.follow_up || '', call_done: vendor.call_done || '',
+  } : { name: '', title: '', company: '', email: '', phone: '', website: '', resume_role: '', notes: '', vendor_type: '', email_sent: '', follow_up: '', call_done: '' });
+
+  const inp = { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginTop: 4 };
+  const lbl = { fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 };
+  const up = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  return (
+    <Modal title={vendor ? 'Edit Vendor' : 'Add Vendor'} onClose={onClose}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {[['name','Full Name *'],['title','Job Title'],['company','Company *'],['email','Email'],['phone','Phone'],['website','Website / LinkedIn']].map(([k, l]) => (
+          <div key={k}>
+            <label style={lbl}>{l}</label>
+            <input value={f[k]} onChange={e => up(k, e.target.value)} style={inp} onFocus={e => e.target.style.borderColor = '#3b82f6'} onBlur={e => e.target.style.borderColor = '#d1d5db'} />
+          </div>
+        ))}
+        <div style={{ gridColumn: '1/-1' }}>
+          <label style={lbl}>Resume Role</label>
+          <input value={f.resume_role} onChange={e => up('resume_role', e.target.value)} style={inp} />
+        </div>
+        <div style={{ gridColumn: '1/-1' }}>
+          <label style={lbl}>Notes</label>
+          <textarea value={f.notes} onChange={e => up('notes', e.target.value)} rows={3} style={{ ...inp, resize: 'vertical' }} />
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10, marginTop: 14 }}>
+        {[['vendor_type','Type',T_OPT],['email_sent','Emailed',S_OPT],['follow_up','Follow-Up',S_OPT],['call_done','Called',S_OPT]].map(([k,l,opts]) => (
+          <div key={k}>
+            <label style={lbl}>{l}</label>
+            <select value={f[k]} onChange={e => up(k, e.target.value)} style={{ ...inp, marginTop: 4 }}>{opts.map(o => <option key={o} value={o}>{o || '—'}</option>)}</select>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 22, justifyContent: 'flex-end' }}>
+        <button onClick={onClose} style={{ padding: '8px 20px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>Cancel</button>
+        <button onClick={() => { if (!f.name.trim() || !f.company.trim()) { alert('Name and Company required'); return; } onSave(f); }} style={{ padding: '8px 22px', border: 'none', borderRadius: 6, background: '#2563eb', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>{vendor ? 'Save Changes' : 'Add Vendor'}</button>
+      </div>
+    </Modal>
+  );
+}
+
 function CSVModal({ onClose, onImport, wishlists }) {
   const [step, setStep] = useState(1); const [parsed, setParsed] = useState([]); const [fileName, setFileName] = useState('');
-  const [addToAll, setAddToAll] = useState(true); const [createWishlist, setCreateWishlist] = useState(true);
-  const [wishlistName, setWishlistName] = useState(''); const [wishlistMode, setWishlistMode] = useState('new'); const [existingWishlist, setExistingWishlist] = useState('');
+  const [addToAll, setAddToAll] = useState(true); const [createWL, setCreateWL] = useState(true);
+  const [wlName, setWlName] = useState(''); const [wlMode, setWlMode] = useState('new'); const [existingWl, setExistingWl] = useState('');
   const fileRef = useRef(null);
+
   const handleFile = e => {
     const file = e.target.files[0]; if (!file) return;
-    setFileName(file.name); setWishlistName(file.name.replace('.csv', '').replace(/_/g, ' '));
-    const reader = new FileReader(); reader.onload = ev => { setParsed(smartParseCSV(ev.target.result)); setStep(2); }; reader.readAsText(file);
+    setFileName(file.name); setWlName(file.name.replace('.csv', '').replace(/_/g, ' '));
+    const reader = new FileReader(); reader.onload = ev => { setParsed(parseCSV(ev.target.result)); setStep(2); }; reader.readAsText(file);
   };
-  const inp = { padding: '9px 12px', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, fontFamily: 'Inter', outline: 'none', width: '100%', boxSizing: 'border-box' };
+
+  const inp = { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' };
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: 32, width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.15)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontFamily: 'Inter', color: C.text, fontSize: 20, fontWeight: 700 }}>Import CSV</h2>
-          <button onClick={onClose} style={{ background: C.bg, border: `1px solid ${C.border}`, color: C.textMuted, cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} /></button>
-        </div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-          {['Upload', 'Preview', 'Options'].map((s, i) => (
-            <div key={s} style={{ flex: 1, padding: '7px 0', textAlign: 'center', borderRadius: 8, fontSize: 13, fontFamily: 'Inter', fontWeight: 600, background: step === i+1 ? C.primaryLight : C.bg, border: `1px solid ${step === i+1 ? C.primaryBorder : C.border}`, color: step === i+1 ? C.primary : step > i+1 ? C.success : C.textMuted }}>{step > i+1 ? '✓ ' : `${i+1}. `}{s}</div>
-          ))}
-        </div>
-        {step === 1 && (
-          <div>
-            <div onClick={() => fileRef.current.click()} style={{ border: `2px dashed ${C.border}`, borderRadius: 14, padding: 48, textAlign: 'center', cursor: 'pointer' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = C.primary; e.currentTarget.style.background = C.primaryLight; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = 'transparent'; }}>
-              <div style={{ fontSize: 36, marginBottom: 10 }}>📄</div>
-              <div style={{ fontFamily: 'Inter', color: C.text, fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Click to browse CSV</div>
-              <div style={{ fontFamily: 'Inter', color: C.textMuted, fontSize: 13 }}>Auto-detects: Name, Company, Email, Phone, Title, LinkedIn</div>
-              <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} style={{ display: 'none' }} />
-            </div>
+    <Modal title="Import CSV" onClose={onClose} maxW={640}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+        {['Upload','Preview','Options'].map((s, i) => (
+          <div key={s} style={{ flex: 1, textAlign: 'center', padding: '6px 0', borderRadius: 6, fontSize: 12, fontWeight: 600, background: step === i+1 ? '#eff6ff' : '#f9fafb', border: `1px solid ${step === i+1 ? '#93c5fd' : '#e5e7eb'}`, color: step === i+1 ? '#1d4ed8' : step > i+1 ? '#15803d' : '#9ca3af' }}>
+            {step > i+1 ? '✓ ' : `${i+1}. `}{s}
           </div>
-        )}
-        {step === 2 && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontFamily: 'Inter', color: C.textSecondary, fontSize: 13 }}>
-                <span style={{ color: C.primary, fontWeight: 600 }}>{parsed.length}</span> vendors · <span style={{ color: C.success }}>{parsed.filter(v => v.email).length} with email</span> · <span style={{ color: C.teal }}>{parsed.filter(v => v.phone).length} with phone</span>
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => setStep(1)} style={{ padding: '7px 14px', borderRadius: 8, background: C.bg, border: `1px solid ${C.border}`, color: C.textSecondary, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13 }}>← Back</button>
-                <button onClick={() => setStep(3)} style={{ padding: '7px 16px', borderRadius: 8, background: C.primary, border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontWeight: 600, fontSize: 13 }}>Continue →</button>
-              </div>
-            </div>
-            <div style={{ background: C.bg, borderRadius: 12, overflow: 'hidden', border: `1px solid ${C.border}`, maxHeight: 320, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr style={{ background: C.surface }}>{['Name', 'Company', 'Email', 'Phone'].map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 12, fontFamily: 'Inter', color: C.textMuted, fontWeight: 600, borderBottom: `1px solid ${C.border}`, position: 'sticky', top: 0, background: C.surface }}>{h}</th>)}</tr></thead>
-                <tbody>{parsed.map((v, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
-                    <td style={{ padding: '7px 12px', fontSize: 13, color: C.text, fontWeight: 500, fontFamily: 'Inter' }}>{v.name || '—'}</td>
-                    <td style={{ padding: '7px 12px', fontSize: 13, color: C.primary, fontFamily: 'Inter' }}>{v.company || '—'}</td>
-                    <td style={{ padding: '7px 12px', fontSize: 12, color: v.email ? C.teal : C.textMuted, fontFamily: 'Inter' }}>{v.email || '✗'}</td>
-                    <td style={{ padding: '7px 12px', fontSize: 12, color: v.phone ? C.textSecondary : C.textMuted, fontFamily: 'Inter' }}>{v.phone || '✗'}</td>
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-          </div>
-        )}
-        {step === 3 && (
-          <div>
-            <p style={{ fontFamily: 'Inter', color: C.textSecondary, fontSize: 13, marginTop: 0, marginBottom: 18 }}>What to do with <strong style={{ color: C.text }}>{parsed.length} vendors</strong>?</p>
-            {[{ key: 'addToAll', val: addToAll, set: setAddToAll, title: 'Add to All Vendors', desc: 'Visible in main list. Delete removes from all views.', color: C.primary, lc: C.primaryLight, bc: C.primaryBorder },
-              { key: 'wishlist', val: createWishlist, set: setCreateWishlist, title: 'Save as Wishlist Sheet', desc: 'Group in a named sheet for easy reference', color: C.purple, lc: C.purpleLight, bc: C.purpleBorder }
-            ].map(({ key, val, set, title, desc, color, lc, bc }) => (
-              <div key={key} onClick={() => set(!val)} style={{ padding: 14, background: val ? lc : C.bg, border: `2px solid ${val ? bc : C.border}`, borderRadius: 12, marginBottom: 10, cursor: 'pointer', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-                <div style={{ width: 20, height: 20, borderRadius: 5, background: val ? color : C.surface, border: `2px solid ${val ? color : C.borderStrong}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontSize: 12, marginTop: 2 }}>{val ? '✓' : ''}</div>
-                <div><div style={{ fontFamily: 'Inter', color: C.text, fontSize: 14, fontWeight: 600 }}>{title}</div><div style={{ fontFamily: 'Inter', color: C.textMuted, fontSize: 12, marginTop: 2 }}>{desc}</div></div>
-              </div>
-            ))}
-            {createWishlist && (
-              <div style={{ background: C.purpleLight, border: `1px solid ${C.purpleBorder}`, borderRadius: 12, padding: 14, marginBottom: 8 }}>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  {['new', 'existing'].map(m => <button key={m} onClick={() => setWishlistMode(m)} style={{ padding: '6px 14px', borderRadius: 8, fontFamily: 'Inter', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: wishlistMode === m ? C.purple : C.surface, border: `1px solid ${wishlistMode === m ? C.purple : C.border}`, color: wishlistMode === m ? '#fff' : C.textSecondary }}>{m === 'new' ? '+ New Sheet' : 'Add to Existing'}</button>)}
-                </div>
-                {wishlistMode === 'new'
-                  ? <input value={wishlistName} onChange={e => setWishlistName(e.target.value)} placeholder="Sheet name..." style={inp} />
-                  : <select value={existingWishlist} onChange={e => setExistingWishlist(e.target.value)} style={inp}><option value="">Select a sheet...</option>{wishlists.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select>}
-              </div>
-            )}
-            <div style={{ display: 'flex', gap: 12, marginTop: 20, justifyContent: 'space-between' }}>
-              <button onClick={() => setStep(2)} style={{ padding: '10px 20px', borderRadius: 10, background: C.bg, border: `1px solid ${C.border}`, color: C.textSecondary, cursor: 'pointer', fontFamily: 'Inter' }}>← Back</button>
-              <button onClick={() => { onImport({ vendors: parsed, addToAll, createWishlist, wishlistName: wishlistMode === 'new' ? wishlistName : '', existingWishlistId: wishlistMode === 'existing' ? existingWishlist : null }); onClose(); }} disabled={!addToAll && !createWishlist}
-                style={{ padding: '10px 28px', borderRadius: 10, background: C.primary, border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontWeight: 600, fontSize: 14 }}>
-                Import {parsed.length} Vendors
-              </button>
-            </div>
-          </div>
-        )}
+        ))}
       </div>
-    </div>
+
+      {step === 1 && (
+        <div onClick={() => fileRef.current.click()} style={{ border: '2px dashed #d1d5db', borderRadius: 8, padding: 48, textAlign: 'center', cursor: 'pointer' }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = '#3b82f6'}
+          onMouseLeave={e => e.currentTarget.style.borderColor = '#d1d5db'}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, color: '#111827' }}>Click to browse CSV</div>
+          <div style={{ fontSize: 12, color: '#6b7280' }}>Auto-detects Name, Company, Email, Phone, Title, Location</div>
+          <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} style={{ display: 'none' }} />
+        </div>
+      )}
+
+      {step === 2 && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <span style={{ fontSize: 13, color: '#374151' }}><b style={{ color: '#1d4ed8' }}>{parsed.length}</b> vendors · <span style={{ color: '#15803d' }}>{parsed.filter(v=>v.email).length} with email</span> · <span style={{ color: '#0891b2' }}>{parsed.filter(v=>v.phone).length} with phone</span></span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setStep(1)} style={{ padding: '5px 12px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 5, background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>← Back</button>
+              <button onClick={() => setStep(3)} style={{ padding: '5px 14px', fontSize: 12, border: 'none', borderRadius: 5, background: '#2563eb', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Continue →</button>
+            </div>
+          </div>
+          <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ background: '#f9fafb', position: 'sticky', top: 0 }}>
+                {['Name','Company','Email','Phone'].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#6b7280', borderBottom: '1px solid #e5e7eb' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>{parsed.map((v,i) => (
+                <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '7px 10px', color: '#111827', fontWeight: 500 }}>{v.name||'—'}</td>
+                  <td style={{ padding: '7px 10px', color: '#2563eb' }}>{v.company||'—'}</td>
+                  <td style={{ padding: '7px 10px', color: v.email ? '#0891b2' : '#d1d5db' }}>{v.email||'✗'}</td>
+                  <td style={{ padding: '7px 10px', color: v.phone ? '#374151' : '#d1d5db' }}>{v.phone||'✗'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div>
+          {[{k:'addToAll',v:addToAll,set:setAddToAll,t:'Add to All Vendors',d:'Vendors appear in the main list. Delete from any view removes from database.'},
+            {k:'wishlist',v:createWL,set:setCreateWL,t:'Save as Wishlist Sheet',d:'Group this batch in a named sheet'}
+          ].map(({k,v,set,t,d}) => (
+            <div key={k} onClick={() => set(!v)} style={{ padding: 14, border: `2px solid ${v ? '#3b82f6' : '#e5e7eb'}`, borderRadius: 8, marginBottom: 10, cursor: 'pointer', background: v ? '#eff6ff' : '#fff', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ width: 18, height: 18, borderRadius: 4, border: `2px solid ${v ? '#2563eb' : '#d1d5db'}`, background: v ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 2 }}>
+                {v && <span style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>✓</span>}
+              </div>
+              <div><div style={{ fontWeight: 600, fontSize: 13, color: '#111827', marginBottom: 2 }}>{t}</div><div style={{ fontSize: 12, color: '#6b7280' }}>{d}</div></div>
+            </div>
+          ))}
+
+          {createWL && (
+            <div style={{ background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: 8, padding: 14, marginBottom: 4 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                {['new','existing'].map(m => <button key={m} onClick={() => setWlMode(m)} style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, background: wlMode===m ? '#7c3aed' : '#fff', border: `1px solid ${wlMode===m ? '#7c3aed' : '#d1d5db'}`, color: wlMode===m ? '#fff' : '#374151' }}>{m==='new' ? '+ New Sheet' : 'Existing Sheet'}</button>)}
+              </div>
+              {wlMode==='new'
+                ? <input value={wlName} onChange={e => setWlName(e.target.value)} placeholder="Sheet name..." style={inp} />
+                : <select value={existingWl} onChange={e => setExistingWl(e.target.value)} style={inp}><option value="">Select...</option>{wishlists.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select>
+              }
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
+            <button onClick={() => setStep(2)} style={{ padding: '8px 18px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>← Back</button>
+            <button onClick={() => { onImport({ vendors: parsed, addToAll, createWL, wlName: wlMode==='new' ? wlName : '', existingWlId: wlMode==='existing' ? existingWl : null }); onClose(); }} style={{ padding: '8px 22px', border: 'none', borderRadius: 6, background: '#2563eb', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>Import {parsed.length} Vendors</button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
-// ─── VENDOR MODAL ────────────────────────────────────────────────
-function VendorModal({ vendor, onSave, onClose }) {
-  const [form, setForm] = useState(vendor || { name: '', title: '', company: '', email: '', phone: '', website: '', emailSent: '', followUp: '', callDone: '', resumeRole: '', notes: '', vendorType: '' });
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const inp = { display: 'block', width: '100%', marginTop: 4, padding: '9px 12px', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 13, fontFamily: 'Inter', outline: 'none', boxSizing: 'border-box' };
-  const lbl = { fontSize: 11, color: C.textMuted, fontFamily: 'Inter', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 };
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: 32, width: '100%', maxWidth: 580, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.15)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontFamily: 'Inter', color: C.text, fontSize: 20, fontWeight: 700 }}>{vendor ? 'Edit Vendor' : 'Add New Vendor'}</h2>
-          <button onClick={onClose} style={{ background: C.bg, border: `1px solid ${C.border}`, color: C.textMuted, cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} /></button>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          {[{ key: 'name', label: 'Full Name *', span: false }, { key: 'title', label: 'Job Title', span: false }, { key: 'company', label: 'Company *', span: false }, { key: 'email', label: 'Email', span: false }, { key: 'phone', label: 'Phone', span: false }, { key: 'website', label: 'Website / LinkedIn', span: false }, { key: 'resumeRole', label: 'Resume Role', span: true }, { key: 'notes', label: 'Notes', span: true }].map(({ key, label, span }) => (
-            <div key={key} style={{ gridColumn: span ? '1/-1' : 'auto' }}>
-              <label style={lbl}>{label}</label>
-              <input value={form[key] || ''} onChange={e => f(key, e.target.value)} style={inp} onFocus={e => e.target.style.borderColor = C.primary} onBlur={e => e.target.style.borderColor = C.border} />
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginTop: 14 }}>
-          {[{ key: 'vendorType', label: 'Type', opts: ['', 'Normal', 'Prime', 'Core'] }, { key: 'emailSent', label: 'Email Sent?', opts: STATUS_OPTIONS }, { key: 'followUp', label: 'Follow-Up?', opts: STATUS_OPTIONS }, { key: 'callDone', label: 'Call Done?', opts: STATUS_OPTIONS }].map(({ key, label, opts }) => (
-            <div key={key}>
-              <label style={lbl}>{label}</label>
-              <select value={form[key] || ''} onChange={e => f(key, e.target.value)} style={{ ...inp, marginTop: 4 }}>{opts.map(o => <option key={o} value={o}>{o || '—'}</option>)}</select>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 12, marginTop: 24, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '10px 24px', borderRadius: 10, background: C.bg, border: `1px solid ${C.border}`, color: C.textSecondary, cursor: 'pointer', fontFamily: 'Inter' }}>Cancel</button>
-          <button onClick={() => { if (!form.name || !form.company) { alert('Name and Company required'); return; } onSave(form); }} style={{ padding: '10px 28px', borderRadius: 10, background: C.primary, border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontWeight: 600 }}>{vendor ? 'Save Changes' : 'Add Vendor'}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmailTemplatesPanel({ onClose }) {
+function TemplatesModal({ onClose }) {
   const [templates, setTemplates] = useState(() => lload('emailTemplates', [
-    { id: 1, title: 'Initial Outreach', body: `Hi [Name],\n\nI hope you're doing well! I'm Alok, GTM Automation Engineer at ConsultAdd. I'd love to explore collaboration opportunities.\n\nOpen to a quick 15-min call?\n\nBest,\nAlok Kumar Singh` },
-    { id: 2, title: 'Resume Follow-Up', body: `Hi [Name],\n\nFollowing up on the resume I shared for [Role].\n\nThanks,\nAlok` },
-    { id: 3, title: 'Partnership Intro', body: `Hello [Name],\n\nReaching out from ConsultAdd IT Staffing. We'd love to explore a vendor partnership.\n\nBest,\nAlok Kumar Singh\nGTM Automation Engineer, ConsultAdd` },
+    { id: 1, title: 'Initial Outreach', body: 'Hi [Name],\n\nI hope you\'re doing well! I\'m Alok, GTM Automation Engineer at ConsultAdd. I came across your profile and wanted to explore potential collaboration.\n\nOpen to a quick 15-min call this week?\n\nBest,\nAlok Kumar Singh' },
+    { id: 2, title: 'Resume Follow-Up', body: 'Hi [Name],\n\nFollowing up on the resume I shared for [Role].\n\nThanks,\nAlok' },
+    { id: 3, title: 'Partnership Intro', body: 'Hello [Name],\n\nReaching out from ConsultAdd IT Staffing. We\'d love to explore a vendor partnership with [Company].\n\nBest,\nAlok Kumar Singh' },
   ]));
   const [editing, setEditing] = useState(null); const [copied, setCopied] = useState(null);
   const sv = t => { setTemplates(t); lsave('emailTemplates', t); };
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 20, padding: 32, width: '100%', maxWidth: 640, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 24px 80px rgba(0,0,0,0.15)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h2 style={{ margin: 0, fontFamily: 'Inter', color: C.text, fontSize: 20, fontWeight: 700 }}>Email Templates</h2>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => { const t = { id: Date.now(), title: 'New Template', body: '' }; sv([...templates, t]); setEditing(t.id); }} style={{ padding: '8px 16px', borderRadius: 8, background: C.primary, border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600 }}>+ New</button>
-            <button onClick={onClose} style={{ background: C.bg, border: `1px solid ${C.border}`, color: C.textMuted, cursor: 'pointer', borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={14} /></button>
-          </div>
-        </div>
-        {templates.map(t => (
-          <div key={t.id} style={{ background: C.bg, borderRadius: 14, padding: 18, marginBottom: 12, border: `1px solid ${C.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              {editing === t.id ? <input value={t.title} onChange={e => sv(templates.map(x => x.id === t.id ? { ...x, title: e.target.value } : x))} style={{ background: C.surface, border: `1px solid ${C.primary}`, borderRadius: 8, color: C.text, padding: '6px 10px', fontFamily: 'Inter', fontSize: 14, fontWeight: 700, outline: 'none' }} />
-                : <h3 style={{ margin: 0, fontFamily: 'Inter', color: C.text, fontSize: 15, fontWeight: 700 }}>{t.title}</h3>}
-              <div style={{ display: 'flex', gap: 7 }}>
-                <button onClick={() => { navigator.clipboard.writeText(t.body); setCopied(t.id); setTimeout(() => setCopied(null), 2000); }} style={{ padding: '5px 12px', borderRadius: 8, background: copied === t.id ? C.successLight : C.surface, border: `1px solid ${copied === t.id ? C.successBorder : C.border}`, color: copied === t.id ? C.success : C.textSecondary, cursor: 'pointer', fontSize: 12, fontFamily: 'Inter' }}>{copied === t.id ? '✓ Copied' : 'Copy'}</button>
-                <button onClick={() => setEditing(editing === t.id ? null : t.id)} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.textSecondary, cursor: 'pointer', padding: '5px 10px', fontSize: 12 }}>{editing === t.id ? '✓ Done' : 'Edit'}</button>
-                <button onClick={() => sv(templates.filter(x => x.id !== t.id))} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer' }}>🗑️</button>
-              </div>
+    <Modal title="Email Templates" onClose={onClose} maxW={620}>
+      <button onClick={() => { const t = { id: Date.now(), title: 'New Template', body: '' }; sv([...templates, t]); setEditing(t.id); }} style={{ marginBottom: 16, padding: '7px 16px', border: 'none', borderRadius: 6, background: '#2563eb', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>+ New Template</button>
+      {templates.map(t => (
+        <div key={t.id} style={{ background: '#f9fafb', borderRadius: 8, padding: 16, marginBottom: 12, border: '1px solid #e5e7eb' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            {editing===t.id
+              ? <input value={t.title} onChange={e => sv(templates.map(x => x.id===t.id ? {...x,title:e.target.value} : x))} style={{ border: '1px solid #3b82f6', borderRadius: 5, padding: '4px 8px', fontSize: 14, fontWeight: 600, outline: 'none', fontFamily: 'inherit' }} />
+              : <strong style={{ fontSize: 14, color: '#111827' }}>{t.title}</strong>
+            }
+            <div style={{ display: 'flex', gap: 7 }}>
+              <button onClick={() => { navigator.clipboard.writeText(t.body); setCopied(t.id); setTimeout(() => setCopied(null), 2000); }} style={{ padding: '4px 10px', fontSize: 12, border: `1px solid ${copied===t.id ? '#86efac' : '#d1d5db'}`, borderRadius: 5, background: copied===t.id ? '#f0fdf4' : '#fff', color: copied===t.id ? '#15803d' : '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>{copied===t.id ? '✓ Copied' : 'Copy'}</button>
+              <button onClick={() => setEditing(editing===t.id ? null : t.id)} style={{ padding: '4px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 5, background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>{editing===t.id ? 'Done' : 'Edit'}</button>
+              <button onClick={() => sv(templates.filter(x => x.id!==t.id))} style={{ padding: '4px 8px', fontSize: 12, border: '1px solid #fca5a5', borderRadius: 5, background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit' }}>Del</button>
             </div>
-            {editing === t.id ? <textarea value={t.body} onChange={e => sv(templates.map(x => x.id === t.id ? { ...x, body: e.target.value } : x))} rows={6} style={{ width: '100%', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, padding: 12, fontFamily: 'Inter', fontSize: 13, resize: 'vertical', boxSizing: 'border-box', outline: 'none', lineHeight: 1.6 }} />
-              : <pre style={{ margin: 0, fontFamily: 'Inter', fontSize: 12, color: C.textSecondary, whiteSpace: 'pre-wrap', lineHeight: 1.7, maxHeight: 80, overflow: 'hidden' }}>{t.body}</pre>}
           </div>
-        ))}
-      </div>
-    </div>
+          {editing===t.id
+            ? <textarea value={t.body} onChange={e => sv(templates.map(x => x.id===t.id ? {...x,body:e.target.value} : x))} rows={6} style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: 10, fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }} />
+            : <pre style={{ margin: 0, fontSize: 12, color: '#6b7280', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: 80, overflow: 'hidden' }}>{t.body}</pre>
+          }
+        </div>
+      ))}
+    </Modal>
   );
 }
 
-function ThoughtsWidget() {
-  const [text, setText] = useState(() => lload('thoughts', ''));
-  const [saved, setSaved] = useState(false);
-  const quotes = ["मेहनत कभी बेकार नहीं जाती 💪", "Every lead is an opportunity 🎯", "Build the pipeline, trust the process 🔥", "कड़ी मेहनत का फल मीठा होता है 🌟"];
-  const [qi] = useState(() => Math.floor(Math.random() * quotes.length));
-  return (
-    <div style={{ background: C.purpleLight, border: `1px solid ${C.purpleBorder}`, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
-      <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${C.purpleBorder}` }}>
-        <span style={{ fontFamily: 'Inter', fontSize: 12, fontWeight: 700, color: C.purple }}>Thoughts & Notes</span>
-        <button onClick={() => { lsave('thoughts', text); setSaved(true); setTimeout(() => setSaved(false), 2000); }} style={{ padding: '3px 10px', borderRadius: 6, background: saved ? C.successLight : C.purpleLight, border: `1px solid ${saved ? C.successBorder : C.purpleBorder}`, color: saved ? C.success : C.purple, cursor: 'pointer', fontSize: 11, fontFamily: 'Inter', fontWeight: 600 }}>{saved ? '✓ Saved' : 'Save'}</button>
-      </div>
-      <div style={{ padding: '10px 14px 12px' }}>
-        <div style={{ fontSize: 11, color: C.purple, fontFamily: 'Inter', fontStyle: 'italic', marginBottom: 8, padding: '5px 8px', background: 'rgba(124,58,237,0.08)', borderRadius: 7, borderLeft: `3px solid ${C.purple}` }}>{quotes[qi]}</div>
-        <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Write your thoughts... Hindi mein bhi! 🙏" style={{ width: '100%', minHeight: 70, background: C.surface, border: `1px solid ${C.purpleBorder}`, borderRadius: 8, color: C.text, padding: '8px 10px', fontFamily: 'Inter', fontSize: 13, resize: 'vertical', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box' }} />
-      </div>
-    </div>
-  );
-}
-
+// ─── NOTES CELL ───────────────────────────────────────────────────
 function NotesCell({ value, onSave }) {
   const [local, setLocal] = useState(value || '');
   const debounced = useDebounce(local, 800);
   const mounted = useRef(false);
   useEffect(() => { setLocal(value || ''); }, [value]);
   useEffect(() => { if (!mounted.current) { mounted.current = true; return; } onSave(debounced); }, [debounced]);
-  return <textarea value={local} onChange={e => setLocal(e.target.value)} placeholder="Add notes..." rows={3}
-    style={{ width: '100%', maxWidth: 560, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, padding: '8px 10px', fontFamily: 'Inter', fontSize: 13, resize: 'vertical', outline: 'none', boxSizing: 'border-box', lineHeight: 1.5 }}
-    onFocus={e => e.target.style.borderColor = C.primary} onBlur={e => e.target.style.borderColor = C.border} />;
+  return <textarea value={local} onChange={e => setLocal(e.target.value)} placeholder="Notes..." rows={3}
+    style={{ width: '100%', border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 9px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box' }}
+    onFocus={e => e.target.style.borderColor = '#3b82f6'} onBlur={e => e.target.style.borderColor = '#d1d5db'} />;
 }
 
-// ─── VENDOR TABLE ────────────────────────────────────────────────
-function VendorTable({ vendors, onUpdate, onEdit, onDelete, onBulkDelete, onBulkTag, onUndo, canUndo, onReorder }) {
+// ─── BULK TAG BAR ─────────────────────────────────────────────────
+function BulkBar({ count, filteredCount, allSel, onSelAll, onClear, onBulkTag, onBulkDel }) {
+  const [showTag, setShowTag] = useState(false);
+  const [field, setField] = useState('vendor_type');
+  const [val, setVal] = useState('Prime');
+  const [delConf, setDelConf] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setShowTag(false); };
+    document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const FIELDS = [
+    { k: 'vendor_type', l: 'Vendor Type', opts: T_OPT },
+    { k: 'email_sent',  l: 'Email Sent',  opts: S_OPT },
+    { k: 'follow_up',   l: 'Follow-Up',   opts: S_OPT },
+    { k: 'call_done',   l: 'Call Done',   opts: S_OPT },
+  ];
+  const selF = FIELDS.find(f => f.k === field);
+  return (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 14px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: '#92400e' }}>{count} selected</span>
+      {filteredCount > count && !allSel && (
+        <button onClick={onSelAll} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0, fontFamily: 'inherit' }}>Select all {filteredCount} filtered</button>
+      )}
+      {allSel && filteredCount > 1 && <span style={{ fontSize: 12, color: '#15803d', fontWeight: 500 }}>✓ All {filteredCount} selected</span>}
+
+      <div ref={ref} style={{ position: 'relative' }}>
+        <button onClick={() => setShowTag(o => !o)} style={{ padding: '5px 12px', fontSize: 12, border: '1px solid #3b82f6', borderRadius: 6, background: '#eff6ff', color: '#2563eb', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+          🏷 Bulk Tag ▼
+        </button>
+        {showTag && (
+          <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 16, minWidth: 260, boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', marginBottom: 12 }}>Set field for {count} vendors</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>Field</label>
+                <select value={field} onChange={e => { setField(e.target.value); setVal(''); }} style={{ width: '100%', padding: '7px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
+                  {FIELDS.map(f => <option key={f.k} value={f.k}>{f.l}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>Value</label>
+                <select value={val} onChange={e => setVal(e.target.value)} style={{ width: '100%', padding: '7px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, fontFamily: 'inherit', outline: 'none' }}>
+                  {(selF?.opts || []).map(o => <option key={o} value={o}>{o || '(clear)'}</option>)}
+                </select>
+              </div>
+              <button onClick={() => { onBulkTag(field, val); setShowTag(false); }} style={{ padding: '8px', border: 'none', borderRadius: 6, background: '#2563eb', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>Apply to {count} vendors ✓</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {delConf
+        ? <>
+            <span style={{ fontSize: 12, color: '#dc2626', fontWeight: 600 }}>Delete {count} permanently?</span>
+            <button onClick={() => { onBulkDel(); setDelConf(false); }} style={{ padding: '5px 12px', fontSize: 12, border: 'none', borderRadius: 5, background: '#dc2626', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Confirm</button>
+            <button onClick={() => setDelConf(false)} style={{ padding: '5px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 5, background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+          </>
+        : <button onClick={() => setDelConf(true)} style={{ padding: '5px 12px', fontSize: 12, border: '1px solid #fca5a5', borderRadius: 5, background: '#fef2f2', color: '#dc2626', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}>🗑 Delete</button>
+      }
+
+      <button onClick={onClear} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1 }}>✕</button>
+    </div>
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────────
+export default function App() {
+  const [vendors, setVendors] = useState([]);
+  const [wishlists, setWishlists] = useState([]);
+  const [wlVendors, setWlVendors] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [activeView, setActiveView] = useState('all');
+  const [showVendorModal, setShowVendorModal] = useState(false);
+  const [editingVendor, setEditingVendor] = useState(null);
+  const [showCSV, setShowCSV] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [lastImportIds, setLastImportIds] = useState([]);
+  const [toast, setToast] = useState(null);
+  // table state
   const [search, setSearch] = useState('');
-  const [subView, setSubView] = useState('all');
+  const [subTab, setSubTab] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
-  const [advFilters, setAdvFilters] = useState([]);
-  const [conjunction, setConjunction] = useState('AND');
+  const [filters, setFilters] = useState([]);
+  const [conj, setConj] = useState('AND');
   const [selected, setSelected] = useState(new Set());
-  const [expandedRow, setExpandedRow] = useState(null);
-  const [editingCell, setEditingCell] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [expanded, setExpanded] = useState(null);
+  const [editCell, setEditCell] = useState(null);
+  const [delConfirm, setDelConfirm] = useState(null);
   const [sortCol, setSortCol] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
-  const [showTimestamps, setShowTimestamps] = useState(false);
-  const [dragOverId, setDragOverId] = useState(null);
-  const dragId = useRef(null);
+  const [showTS, setShowTS] = useState(false);
+  const [renamingWL, setRenamingWL] = useState(null);
+  const [delWL, setDelWL] = useState(null);
 
-  const primeCount = vendors.filter(v => v.vendor_type === 'Prime').length;
-  const normalCount = vendors.filter(v => v.vendor_type === 'Normal').length;
-  const coreCount = vendors.filter(v => v.vendor_type === 'Core').length;
-  const withEmail = vendors.filter(v => v.email).length;
-  const withPhone = vendors.filter(v => v.phone).length;
+  // Resizable columns — stored in localStorage
+  const DEFAULTS = { drag: 28, num: 40, name: 170, company: 160, title: 150, email: 200, phone: 145, type: 110, emailed: 95, followup: 95, called: 90, role: 130, created: 160, updated: 160, actions: 85 };
+  const [colW, setColW_] = useState(() => ({ ...DEFAULTS, ...lload('colWidths', {}) }));
+  const setColW = (k, delta) => setColW_(prev => { const next = { ...prev, [k]: Math.max(60, (prev[k] || 80) + delta) }; lsave('colWidths', next); return next; });
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, color: { success: '#15803d', danger: '#dc2626', warning: '#d97706' }[type] || '#2563eb' });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // ─── LOAD DATA ─────────────────────────────────────────────────
+  const loadAll = useCallback(async () => {
+    const [{ data: vData }, { data: wData }, { data: wvData }] = await Promise.all([
+      supabase.from('vendors').select('*').order('id'),
+      supabase.from('wishlists').select('*').order('created_at'),
+      supabase.from('wishlist_vendors').select('*'),
+    ]);
+    if (vData) {
+      if (vData.length === 0) {
+        const seeded = ALL_VENDORS.map(v => ({ name: v.name, title: v.title || '', company: v.company, email: v.email || '', phone: v.phone || '', website: v.website || '', notes: '', vendor_type: 'Core', email_sent: '', follow_up: '', call_done: '', resume_role: '' }));
+        const { data: ins } = await supabase.from('vendors').insert(seeded).select();
+        setVendors(ins || []);
+      } else setVendors(vData);
+    }
+    setWishlists(wData || []);
+    const map = {};
+    (wvData || []).forEach(({ wishlist_id, vendor_id }) => { if (!map[wishlist_id]) map[wishlist_id] = []; map[wishlist_id].push(vendor_id); });
+    setWlVendors(map);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // ─── REALTIME — granular updates, no full reload ───────────────
+  useEffect(() => {
+    const ch = supabase.channel('vendors-rt')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'vendors' }, ({ new: row }) => {
+        setVendors(v => v.some(x => x.id === row.id) ? v : [...v, row]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'vendors' }, ({ new: row }) => {
+        setVendors(v => v.map(x => x.id === row.id ? row : x));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'vendors' }, ({ old: row }) => {
+        setVendors(v => v.filter(x => x.id !== row.id));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wishlists' }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wishlist_vendors' }, () => loadAll())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [loadAll]);
+
+  // ─── VENDOR OPERATIONS ─────────────────────────────────────────
+  const updateVendor = useCallback(async (id, field, value) => {
+    // Optimistic update immediately
+    setVendors(v => v.map(x => x.id === id ? { ...x, [field]: value } : x));
+    const dbField = { vendor_type: 'vendor_type', email_sent: 'email_sent', follow_up: 'follow_up', call_done: 'call_done', resume_role: 'resume_role', emailSent: 'email_sent', followUp: 'follow_up', callDone: 'call_done', resumeRole: 'resume_role', vendorType: 'vendor_type' }[field] || field;
+    await supabase.from('vendors').update({ [dbField]: value }).eq('id', id);
+  }, []);
+
+  const bulkTag = async (ids, field, value) => {
+    // Optimistic: update locally immediately
+    setVendors(v => v.map(x => ids.includes(x.id) ? { ...x, [field]: value } : x));
+    setSyncing(true);
+    await supabase.from('vendors').update({ [field]: value }).in('id', ids);
+    setSyncing(false);
+    showToast(`Updated ${ids.length} vendors`);
+  };
+
+  const saveVendor = async (form) => {
+    const db = { name: form.name, title: form.title || '', company: form.company, email: form.email || '', phone: form.phone || '', website: form.website || '', notes: form.notes || '', vendor_type: form.vendor_type || '', email_sent: form.email_sent || '', follow_up: form.follow_up || '', call_done: form.call_done || '', resume_role: form.resume_role || '' };
+    setSyncing(true);
+    if (!editingVendor) {
+      const { data } = await supabase.from('vendors').insert([db]).select();
+      if (data) setVendors(v => [...v, data[0]]);
+      showToast('Vendor added');
+    } else {
+      await supabase.from('vendors').update(db).eq('id', editingVendor.id);
+      setVendors(v => v.map(x => x.id === editingVendor.id ? { ...x, ...db } : x));
+      showToast('Vendor updated');
+    }
+    setSyncing(false); setShowVendorModal(false); setEditingVendor(null);
+  };
+
+  const deleteVendor = async (id) => {
+    setVendors(v => v.filter(x => x.id !== id)); // optimistic
+    await supabase.from('vendors').delete().eq('id', id);
+    showToast('Deleted', 'warning');
+  };
+
+  const bulkDelete = async (ids) => {
+    setVendors(v => v.filter(x => !ids.includes(x.id))); // optimistic
+    setSyncing(true);
+    await supabase.from('vendors').delete().in('id', ids);
+    setSyncing(false); setSelected(new Set());
+    showToast(`${ids.length} deleted`, 'danger');
+  };
+
+  const handleCSVImport = async ({ vendors: csv, addToAll, createWL, wlName, existingWlId }) => {
+    setSyncing(true);
+    const { data: inserted } = await supabase.from('vendors').insert(csv).select();
+    const ids = (inserted || []).map(d => d.id);
+    setVendors(v => [...v, ...(inserted || [])]);
+    setLastImportIds(ids);
+    if (createWL && ids.length > 0) {
+      let wlId = existingWlId ? parseInt(existingWlId) : null;
+      if (!wlId && wlName) {
+        const { data: wl } = await supabase.from('wishlists').insert([{ name: wlName }]).select();
+        if (wl) { wlId = wl[0].id; setWishlists(w => [...w, wl[0]]); }
+      }
+      if (wlId) {
+        await supabase.from('wishlist_vendors').insert(ids.map(vid => ({ wishlist_id: wlId, vendor_id: vid })));
+        setWlVendors(p => ({ ...p, [wlId]: [...(p[wlId] || []), ...ids] }));
+        setActiveView(wlId.toString());
+      }
+    }
+    setSyncing(false); showToast(`Imported ${ids.length} vendors`);
+  };
+
+  const handleUndo = async () => {
+    if (!lastImportIds.length || !window.confirm(`Delete ${lastImportIds.length} vendors from last import?`)) return;
+    await bulkDelete(lastImportIds); setLastImportIds([]);
+  };
+
+  const deleteWishlist = async (id) => {
+    await supabase.from('wishlists').delete().eq('id', id);
+    setWishlists(w => w.filter(x => x.id !== id));
+    if (activeView === id.toString()) setActiveView('all');
+    setDelWL(null); showToast('Wishlist deleted');
+  };
+
+  const renameWishlist = async (id, name) => {
+    await supabase.from('wishlists').update({ name }).eq('id', id);
+    setWishlists(w => w.map(x => x.id === id ? { ...x, name } : x));
+    setRenamingWL(null);
+  };
+
+  // ─── TABLE DATA ────────────────────────────────────────────────
+  const currentVendors = activeView === 'all' ? vendors : vendors.filter(v => (wlVendors[parseInt(activeView)] || []).includes(v.id));
 
   const filtered = useMemo(() => {
-    let list = vendors.filter(v => {
-      if (subView === 'prime' && v.vendor_type !== 'Prime') return false;
-      if (subView === 'normal' && v.vendor_type !== 'Normal') return false;
-      if (subView === 'core' && v.vendor_type !== 'Core') return false;
+    let list = currentVendors.filter(v => {
+      if (subTab === 'core' && v.vendor_type !== 'Core') return false;
+      if (subTab === 'prime' && v.vendor_type !== 'Prime') return false;
+      if (subTab === 'normal' && v.vendor_type !== 'Normal') return false;
       const q = search.toLowerCase();
-      if (q && !`${v.name} ${v.company} ${v.email} ${v.title} ${v.phone} ${v.website} ${v.notes}`.toLowerCase().includes(q)) return false;
-      if (advFilters.length) {
-        const res = advFilters.map(f => applyFilter(v, f));
-        if (conjunction === 'AND' && !res.every(Boolean)) return false;
-        if (conjunction === 'OR' && !res.some(Boolean)) return false;
+      if (q && !`${v.name} ${v.company} ${v.email} ${v.title} ${v.phone} ${v.notes}`.toLowerCase().includes(q)) return false;
+      if (filters.length) {
+        const res = filters.map(f => matchFilter(v, f));
+        if (conj === 'AND' && !res.every(Boolean)) return false;
+        if (conj === 'OR' && !res.some(Boolean)) return false;
       }
       return true;
     });
@@ -529,519 +700,291 @@ function VendorTable({ vendors, onUpdate, onEdit, onDelete, onBulkDelete, onBulk
       return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
     return list;
-  }, [vendors, subView, search, advFilters, conjunction, sortCol, sortDir]);
+  }, [currentVendors, subTab, search, filters, conj, sortCol, sortDir]);
 
-  const allFilteredSelected = selected.size === filtered.length && filtered.length > 0;
+  const allSel = selected.size === filtered.length && filtered.length > 0;
   const toggleSort = col => { if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc'); else { setSortCol(col); setSortDir('asc'); } };
-  const toggleSelect = id => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
+  const toggleSel = id => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
   const toggleAll = () => { if (selected.size > 0) setSelected(new Set()); else setSelected(new Set(filtered.map(v => v.id))); };
-  const selectAllFiltered = () => setSelected(new Set(filtered.map(v => v.id)));
-  const handleBulkTag = (field, value) => { onBulkTag([...selected], field, value); };
-  const handleBulkDelete = () => { onBulkDelete([...selected]); setSelected(new Set()); };
 
-  // Drag to reorder
-  const handleDragStart = (e, id) => { dragId.current = id; e.dataTransfer.effectAllowed = 'move'; };
-  const handleDragOver = (e, id) => { e.preventDefault(); setDragOverId(id); };
-  const handleDrop = (e, targetId) => {
-    e.preventDefault(); setDragOverId(null);
-    if (dragId.current && dragId.current !== targetId) onReorder(dragId.current, targetId);
-    dragId.current = null;
+  const total = vendors.length, coreC = vendors.filter(v => v.vendor_type === 'Core').length,
+    primeC = vendors.filter(v => v.vendor_type === 'Prime').length,
+    emailsSent = vendors.filter(v => v.email_sent === 'Yes').length,
+    withEmail = vendors.filter(v => v.email).length;
+
+  const TH = ({ col, children, wKey }) => {
+    const startW = useRef(null);
+    return (
+      <th onClick={col ? () => toggleSort(col) : undefined}
+        style={{ padding: '9px 10px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: sortCol === col ? '#1d4ed8' : '#6b7280', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', whiteSpace: 'nowrap', userSelect: 'none', cursor: col ? 'pointer' : 'default', position: 'relative', width: colW[wKey] || 100, minWidth: colW[wKey] || 60 }}>
+        {children}{col && sortCol === col && <span style={{ marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>}
+        {wKey && <ResizeHandle onResize={delta => setColW(wKey, delta)} />}
+      </th>
+    );
   };
-
-  const TH = ({ col, children, w }) => (
-    <th onClick={col ? () => toggleSort(col) : undefined} style={{ padding: '11px 12px', textAlign: 'left', fontSize: 12, fontFamily: 'Inter', fontWeight: 600, color: sortCol === col ? C.primary : C.textSecondary, background: '#f8fafc', borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap', userSelect: 'none', cursor: col ? 'pointer' : 'default', width: w }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>{children}{col && sortCol === col && <span>{sortDir === 'asc' ? ' ↑' : ' ↓'}</span>}</div>
-    </th>
-  );
-
-  return (
-    <div>
-      {/* SUB TABS */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-        {[{ key: 'all', label: 'All', count: vendors.length, color: C.primary }, { key: 'core', label: '🏠 Core', count: coreCount, color: C.core }, { key: 'prime', label: '⭐ Prime', count: primeCount, color: C.gold }, { key: 'normal', label: '● Normal', count: normalCount, color: C.teal }].map(({ key, label, count, color }) => (
-          <button key={key} onClick={() => setSubView(key)} style={{ padding: '7px 16px', borderRadius: 8, fontFamily: 'Inter', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: subView === key ? color : C.surface, border: `1px solid ${subView === key ? color : C.border}`, color: subView === key ? '#fff' : C.textSecondary, boxShadow: subView === key ? `0 2px 8px ${color}30` : 'none', transition: 'all 0.15s' }}>
-            {label} <span style={{ marginLeft: 5, background: subView === key ? 'rgba(255,255,255,0.25)' : C.bg, color: subView === key ? '#fff' : C.textMuted, borderRadius: 20, padding: '1px 7px', fontSize: 12 }}>{count}</span>
-          </button>
-        ))}
-        <div style={{ display: 'flex', gap: 6, marginLeft: 4 }}>
-          <span style={{ fontSize: 12, color: C.teal, padding: '5px 10px', background: C.tealLight, borderRadius: 20, border: `1px solid ${C.tealBorder}`, fontWeight: 500 }}>{withEmail} emails</span>
-          <span style={{ fontSize: 12, color: C.primary, padding: '5px 10px', background: C.primaryLight, borderRadius: 20, border: `1px solid ${C.primaryBorder}`, fontWeight: 500 }}>{withPhone} phones</span>
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          {canUndo && <button onClick={onUndo} style={{ padding: '7px 14px', borderRadius: 8, background: C.warningLight, border: `1px solid ${C.warningBorder}`, color: C.warning, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}><RotateCcw size={13} /> Undo Import</button>}
-          <button onClick={() => setShowTimestamps(!showTimestamps)} style={{ padding: '7px 12px', borderRadius: 8, background: showTimestamps ? C.primaryLight : C.surface, border: `1px solid ${showTimestamps ? C.primaryBorder : C.border}`, color: showTimestamps ? C.primary : C.textMuted, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={13} /> Timestamps</button>
-          <button onClick={() => setShowFilters(!showFilters)} style={{ padding: '7px 14px', borderRadius: 8, background: (showFilters || advFilters.length > 0) ? C.primaryLight : C.surface, border: `1px solid ${(showFilters || advFilters.length > 0) ? C.primaryBorder : C.border}`, color: (showFilters || advFilters.length > 0) ? C.primary : C.textSecondary, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-            <Filter size={13} /> Filters {advFilters.length > 0 && <span style={{ background: C.primary, color: '#fff', borderRadius: 10, padding: '0 6px', fontSize: 11 }}>{advFilters.length}</span>}
-          </button>
-        </div>
-      </div>
-
-      {showFilters && <AdvancedFilterPanel filters={advFilters} setFilters={setAdvFilters} conjunction={conjunction} setConjunction={setConjunction} onClose={() => setShowFilters(false)} />}
-
-      {/* BULK BAR */}
-      {selected.size > 0 && (
-        <BulkTagBar count={selected.size} filteredCount={filtered.length} allFilteredSelected={allFilteredSelected}
-          onSelectAllFiltered={selectAllFiltered} onClear={() => setSelected(new Set())}
-          onBulkDelete={handleBulkDelete} onBulkTag={handleBulkTag} />
-      )}
-
-      {/* SEARCH */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: C.textMuted }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, company, email, phone, title..." style={{ width: '100%', padding: '9px 14px 9px 36px', background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, color: C.text, fontSize: 13, fontFamily: 'Inter', outline: 'none', boxSizing: 'border-box' }}
-            onFocus={e => e.target.style.borderColor = C.primary} onBlur={e => e.target.style.borderColor = C.border} />
-        </div>
-        <span style={{ fontSize: 13, color: C.textMuted, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>{filtered.length} / {vendors.length}</span>
-      </div>
-
-      {/* TABLE */}
-      <div style={{ background: C.surface, borderRadius: 14, overflow: 'hidden', border: `1px solid ${C.border}`, boxShadow: '0 1px 8px rgba(0,0,0,0.05)' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1100 }}>
-            <thead>
-              <tr>
-                <th style={{ padding: '11px 12px', background: '#f8fafc', borderBottom: `1px solid ${C.border}`, width: 36 }}>
-                  <input type="checkbox" checked={selected.size > 0 && selected.size === filtered.length} onChange={toggleAll} style={{ cursor: 'pointer', accentColor: C.primary, width: 15, height: 15 }} />
-                </th>
-                <th style={{ padding: '11px 8px', background: '#f8fafc', borderBottom: `1px solid ${C.border}`, width: 28 }} title="Drag to reorder"><GripVertical size={13} style={{ color: C.textMuted }} /></th>
-                <TH w={36}>#</TH>
-                <TH col="name" w={160}>Name</TH>
-                <TH col="company" w={150}>Company</TH>
-                <TH col="title" w={140}>Title</TH>
-                <TH col="email" w={190}>Email</TH>
-                <TH col="phone" w={145}>Phone</TH>
-                <TH col="vendor_type" w={110}>Type</TH>
-                <TH col="email_sent" w={90}>Emailed</TH>
-                <TH col="follow_up" w={90}>Follow-Up</TH>
-                <TH col="call_done" w={90}>Called</TH>
-                <TH col="resume_role" w={130}>Resume Role</TH>
-                {showTimestamps && <TH col="created_at" w={160}>Created</TH>}
-                {showTimestamps && <TH col="updated_at" w={160}>Updated</TH>}
-                <TH w={80}>Actions</TH>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((v, i) => {
-                const isExp = expandedRow === v.id, isSel = selected.has(v.id);
-                const isDragOver = dragOverId === v.id;
-                const rowBg = isSel ? '#eff6ff' : isDragOver ? '#f0fdf4' : i % 2 === 0 ? C.surface : '#fafafa';
-                return (
-                  <React.Fragment key={v.id}>
-                    <tr style={{ background: rowBg, borderBottom: isExp ? 'none' : `1px solid ${C.border}`, transition: 'background 0.1s', borderTop: isDragOver ? `2px solid ${C.core}` : 'none' }}
-                      onMouseEnter={e => { if (!isSel && !isDragOver) e.currentTarget.style.background = C.surfaceHover; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = rowBg; }}
-                      onDragOver={e => handleDragOver(e, v.id)} onDrop={e => handleDrop(e, v.id)} onDragLeave={() => setDragOverId(null)}>
-                      <td style={{ padding: '10px 12px' }}><input type="checkbox" checked={isSel} onChange={() => toggleSelect(v.id)} style={{ cursor: 'pointer', accentColor: C.primary, width: 15, height: 15 }} /></td>
-                      <td style={{ padding: '10px 8px', cursor: 'grab' }} draggable onDragStart={e => handleDragStart(e, v.id)}><GripVertical size={14} style={{ color: C.textMuted }} /></td>
-                      <td style={{ padding: '10px 12px', color: C.textMuted, fontSize: 12, fontWeight: 600, fontFamily: 'Inter' }}>{i + 1}</td>
-                      <td style={{ padding: '10px 12px' }}><div style={{ fontWeight: 600, color: C.text, fontSize: 13, fontFamily: 'Inter', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 155 }}>{v.name}</div></td>
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ fontWeight: 600, color: C.primary, fontSize: 13, fontFamily: 'Inter', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 145 }}>{v.company}</div>
-                        {v.website && <a href={v.website.startsWith('http') ? v.website : `https://${v.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.teal, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 145 }}>{v.website.replace('https://', '').substring(0, 20)}</a>}
-                      </td>
-                      <td style={{ padding: '10px 12px' }}><div style={{ fontSize: 13, color: C.textSecondary, fontFamily: 'Inter', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 135 }}>{v.title || <span style={{ color: C.textMuted }}>—</span>}</div></td>
-                      <td style={{ padding: '10px 12px' }}>{v.email ? <a href={`mailto:${v.email}`} style={{ fontSize: 13, color: C.teal, fontFamily: 'Inter', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block', maxWidth: 185 }}>{v.email}</a> : <span style={{ fontSize: 13, color: C.textMuted }}>—</span>}</td>
-                      <td style={{ padding: '10px 12px' }}><div style={{ fontSize: 13, color: C.textSecondary, fontFamily: 'Inter', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 140 }}>{v.phone || <span style={{ color: C.textMuted }}>—</span>}</div></td>
-                      <td style={{ padding: '10px 12px' }}><Pill value={v.vendor_type || ''} onChange={val => onUpdate(v.id, 'vendorType', val)} options={['', 'Normal', 'Prime', 'Core']} styleMap={TYPE_STYLE} /></td>
-                      <td style={{ padding: '10px 12px' }}><Pill value={v.email_sent || ''} onChange={val => onUpdate(v.id, 'emailSent', val)} options={STATUS_OPTIONS} styleMap={STATUS_STYLE} /></td>
-                      <td style={{ padding: '10px 12px' }}><Pill value={v.follow_up || ''} onChange={val => onUpdate(v.id, 'followUp', val)} options={STATUS_OPTIONS} styleMap={STATUS_STYLE} /></td>
-                      <td style={{ padding: '10px 12px' }}><Pill value={v.call_done || ''} onChange={val => onUpdate(v.id, 'callDone', val)} options={STATUS_OPTIONS} styleMap={STATUS_STYLE} /></td>
-                      <td style={{ padding: '10px 12px', maxWidth: 130 }}>
-                        {editingCell === v.id
-                          ? <input autoFocus defaultValue={v.resume_role} onBlur={e => { onUpdate(v.id, 'resumeRole', e.target.value); setEditingCell(null); }} onKeyDown={e => e.key === 'Enter' && e.target.blur()} style={{ width: '100%', background: C.surface, border: `1px solid ${C.primary}`, borderRadius: 6, color: C.text, padding: '4px 8px', fontSize: 13, fontFamily: 'Inter', outline: 'none', boxSizing: 'border-box' }} />
-                          : <div onClick={() => setEditingCell(v.id)} style={{ fontSize: 12, color: v.resume_role ? C.purple : C.textMuted, cursor: 'pointer', fontFamily: 'Inter', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120, padding: '2px 4px', borderRadius: 4, border: '1px dashed transparent' }}
-                              onMouseEnter={e => e.currentTarget.style.borderColor = C.border} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
-                              {v.resume_role || <span style={{ color: C.textMuted }}>+ Add</span>}
-                            </div>}
-                      </td>
-                      {showTimestamps && <td style={{ padding: '10px 12px' }}><div style={{ fontSize: 12, color: C.textSecondary, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>{formatDate(v.created_at)}</div></td>}
-                      {showTimestamps && <td style={{ padding: '10px 12px' }}><div style={{ fontSize: 12, color: C.textSecondary, fontFamily: 'Inter', whiteSpace: 'nowrap' }}>{formatDate(v.updated_at)}</div></td>}
-                      <td style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => setExpandedRow(isExp ? null : v.id)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, cursor: 'pointer', padding: '3px 6px', display: 'flex', alignItems: 'center' }}>{isExp ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</button>
-                          <button onClick={() => onEdit(v)} style={{ background: 'none', border: `1px solid ${C.border}`, borderRadius: 6, color: C.textMuted, cursor: 'pointer', padding: '3px 6px', display: 'flex', alignItems: 'center' }}><Edit2 size={12} /></button>
-                          <button onClick={() => setDeleteConfirm(v.id)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', padding: '3px 5px', borderRadius: 6, display: 'flex', alignItems: 'center' }}
-                            onMouseEnter={e => { e.currentTarget.style.color = C.danger; e.currentTarget.style.background = C.dangerLight; }}
-                            onMouseLeave={e => { e.currentTarget.style.color = C.textMuted; e.currentTarget.style.background = 'none'; }}>
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {isExp && (
-                      <tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
-                        <td colSpan={showTimestamps ? 17 : 15} style={{ padding: '14px 20px 18px 60px' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-                            <div>
-                              <div style={{ fontSize: 11, color: C.textMuted, fontFamily: 'Inter', fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>Notes</div>
-                              <NotesCell value={v.notes} onSave={val => onUpdate(v.id, 'notes', val)} />
-                            </div>
-                            <div style={{ fontSize: 13, color: C.textSecondary, fontFamily: 'Inter', lineHeight: 2.2 }}>
-                              {v.website && <div><a href={v.website.startsWith('http') ? v.website : `https://${v.website}`} target="_blank" rel="noreferrer" style={{ color: C.primary }}>{v.website}</a></div>}
-                              {v.created_at && <div><span style={{ color: C.textMuted, fontSize: 12 }}>Added:</span> <strong style={{ color: C.text }}>{formatDate(v.created_at)}</strong></div>}
-                              {v.updated_at && <div><span style={{ color: C.textMuted, fontSize: 12 }}>Updated:</span> <strong style={{ color: C.text }}>{formatDate(v.updated_at)}</strong></div>}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                    {deleteConfirm === v.id && (
-                      <tr style={{ background: C.dangerLight }}>
-                        <td colSpan={showTimestamps ? 17 : 15} style={{ padding: '10px 20px' }}>
-                          <span style={{ color: C.danger, fontSize: 13, fontFamily: 'Inter' }}>Delete <strong>{v.name}</strong> from all views permanently? &nbsp;</span>
-                          <button onClick={() => { onDelete(v.id); setDeleteConfirm(null); }} style={{ background: C.danger, border: 'none', color: '#fff', borderRadius: 7, padding: '5px 14px', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600, marginRight: 8 }}>Yes, Delete</button>
-                          <button onClick={() => setDeleteConfirm(null)} style={{ background: C.surface, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 7, padding: '5px 12px', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13 }}>Cancel</button>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {filtered.length === 0 && (
-          <div style={{ padding: 48, textAlign: 'center', color: C.textMuted, fontFamily: 'Inter', fontSize: 14 }}>
-            {advFilters.length > 0
-              ? <div><div style={{ fontSize: 28, marginBottom: 10 }}>🔍</div>No vendors match these filters.<br />
-                  <button onClick={() => setAdvFilters([])} style={{ marginTop: 12, padding: '7px 18px', borderRadius: 8, background: C.primaryLight, border: `1px solid ${C.primaryBorder}`, color: C.primary, cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600 }}>Clear Filters</button>
-                </div>
-              : 'No vendors found'
-            }
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── MAIN APP ────────────────────────────────────────────────────
-export default function App() {
-  const [vendors, setVendors] = useState([]);
-  const [vendorOrder, setVendorOrder] = useState(() => lload('vendorOrder', []));
-  const [wishlists, setWishlists] = useState([]);
-  const [wishlistVendors, setWishlistVendors] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [activeView, setActiveView] = useState('all');
-  const [modal, setModal] = useState(null);
-  const [showEmail, setShowEmail] = useState(false);
-  const [showCSV, setShowCSV] = useState(false);
-  const [editingVendor, setEditingVendor] = useState(null);
-  const [renamingWishlist, setRenamingWishlist] = useState(null);
-  const [deleteWishlistConfirm, setDeleteWishlistConfirm] = useState(null);
-  const [lastImportIds, setLastImportIds] = useState([]);
-  const [toast, setToast] = useState(null);
-
-  const showToast = (msg, type = 'success') => {
-    const colors = { success: C.success, danger: C.danger, warning: C.warning, info: C.primary };
-    setToast({ msg, color: colors[type] || C.primary });
-    setTimeout(() => setToast(null), 3500);
-  };
-
-  const loadAll = useCallback(async () => {
-    try {
-      const [{ data: vData }, { data: wData }, { data: wvData }] = await Promise.all([
-        supabase.from('vendors').select('*').order('id'),
-        supabase.from('wishlists').select('*').order('created_at'),
-        supabase.from('wishlist_vendors').select('*'),
-      ]);
-      if (vData) {
-        if (vData.length === 0) {
-          const seeded = ALL_VENDORS.map(v => ({ name: v.name, title: v.title || '', company: v.company, email: v.email || '', phone: v.phone || '', website: v.website || '', notes: '', vendor_type: 'Core', email_sent: '', follow_up: '', call_done: '', resume_role: '' }));
-          const { data: ins } = await supabase.from('vendors').insert(seeded).select();
-          setVendors(ins || []);
-        } else {
-          setVendors(vData);
-        }
-      }
-      setWishlists(wData || []);
-      const map = {};
-      (wvData || []).forEach(({ wishlist_id, vendor_id }) => { if (!map[wishlist_id]) map[wishlist_id] = []; map[wishlist_id].push(vendor_id); });
-      setWishlistVendors(map);
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadAll(); }, [loadAll]);
-
-  useEffect(() => {
-    const ch = supabase.channel('rt-meta')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'vendors' }, p => setVendors(v => v.find(x => x.id === p.new.id) ? v : [...v, p.new]))
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'vendors' }, p => setVendors(v => v.filter(x => x.id !== p.old.id)))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wishlists' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wishlist_vendors' }, loadAll)
-      .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [loadAll]);
-
-  // Apply custom order
-  const orderedVendors = useMemo(() => {
-    if (!vendorOrder.length) return vendors;
-    const map = Object.fromEntries(vendors.map(v => [v.id, v]));
-    const ordered = vendorOrder.filter(id => map[id]).map(id => map[id]);
-    const remaining = vendors.filter(v => !vendorOrder.includes(v.id));
-    return [...ordered, ...remaining];
-  }, [vendors, vendorOrder]);
-
-  const handleReorder = useCallback((draggedId, targetId) => {
-    setVendors(prev => {
-      const list = [...prev];
-      const fromIdx = list.findIndex(v => v.id === draggedId);
-      const toIdx = list.findIndex(v => v.id === targetId);
-      if (fromIdx === -1 || toIdx === -1) return prev;
-      const [item] = list.splice(fromIdx, 1);
-      list.splice(toIdx, 0, item);
-      const newOrder = list.map(v => v.id);
-      setVendorOrder(newOrder);
-      lsave('vendorOrder', newOrder);
-      return list;
-    });
-  }, []);
-
-  const updateVendor = useCallback(async (id, field, value) => {
-    setVendors(v => v.map(x => x.id === id ? { ...x, [field]: value } : x));
-    const dbField = { emailSent: 'email_sent', followUp: 'follow_up', callDone: 'call_done', resumeRole: 'resume_role', vendorType: 'vendor_type' }[field] || field;
-    await supabase.from('vendors').update({ [dbField]: value }).eq('id', id);
-  }, []);
-
-  const bulkTag = async (ids, field, value) => {
-    setSyncing(true);
-    setVendors(v => v.map(x => ids.includes(x.id) ? { ...x, [field]: value } : x));
-    await supabase.from('vendors').update({ [field]: value }).in('id', ids);
-    setSyncing(false);
-    showToast(`Updated ${ids.length} vendors`);
-  };
-
-  const saveVendor = async (form) => {
-    const dbForm = { name: form.name, title: form.title || '', company: form.company, email: form.email || '', phone: form.phone || '', website: form.website || '', notes: form.notes || '', vendor_type: form.vendorType || '', email_sent: form.emailSent || '', follow_up: form.followUp || '', call_done: form.callDone || '', resume_role: form.resumeRole || '' };
-    setSyncing(true);
-    if (!editingVendor) {
-      const { data } = await supabase.from('vendors').insert([dbForm]).select();
-      if (data) {
-        setVendors(v => [...v, data[0]]);
-        if (activeView !== 'all' && data[0]) await supabase.from('wishlist_vendors').insert([{ wishlist_id: parseInt(activeView), vendor_id: data[0].id }]);
-      }
-      showToast('Vendor added');
-    } else {
-      await supabase.from('vendors').update(dbForm).eq('id', editingVendor.id);
-      setVendors(v => v.map(x => x.id === editingVendor.id ? { ...x, ...dbForm } : x));
-      showToast('Vendor updated');
-    }
-    setSyncing(false); setEditingVendor(null); setModal(null);
-  };
-
-  const deleteVendor = async (id) => {
-    await supabase.from('vendors').delete().eq('id', id);
-    setVendors(v => v.filter(x => x.id !== id));
-    showToast('Deleted from all views', 'warning');
-  };
-
-  const bulkDelete = async (ids) => {
-    setSyncing(true);
-    await supabase.from('vendors').delete().in('id', ids);
-    setVendors(v => v.filter(x => !ids.includes(x.id)));
-    setSyncing(false); showToast(`${ids.length} vendors deleted`, 'danger');
-  };
-
-  const handleCSVImport = async ({ vendors: csvVendors, addToAll, createWishlist, wishlistName, existingWishlistId }) => {
-    setSyncing(true);
-    const { data: inserted } = await supabase.from('vendors').insert(csvVendors).select();
-    const ids = (inserted || []).map(d => d.id);
-    setVendors(v => [...v, ...(inserted || [])]);
-    setLastImportIds(ids);
-    if (createWishlist && ids.length > 0) {
-      let wlId = existingWishlistId ? parseInt(existingWishlistId) : null;
-      if (!wlId && wishlistName) {
-        const { data: wl } = await supabase.from('wishlists').insert([{ name: wishlistName }]).select();
-        if (wl) { wlId = wl[0].id; setWishlists(w => [...w, wl[0]]); }
-      }
-      if (wlId) {
-        await supabase.from('wishlist_vendors').insert(ids.map(vid => ({ wishlist_id: wlId, vendor_id: vid })));
-        setWishlistVendors(p => ({ ...p, [wlId]: [...(p[wlId] || []), ...ids] }));
-        setActiveView(wlId.toString());
-      }
-    }
-    setSyncing(false); showToast(`Imported ${ids.length} vendors!`);
-  };
-
-  const handleUndo = async () => {
-    if (!lastImportIds.length || !window.confirm(`Delete ${lastImportIds.length} vendors from last import?`)) return;
-    await bulkDelete(lastImportIds); setLastImportIds([]); showToast('Import undone', 'warning');
-  };
-
-  const deleteWishlist = async (id) => {
-    await supabase.from('wishlists').delete().eq('id', id);
-    setWishlists(w => w.filter(x => x.id !== id));
-    if (activeView === id.toString()) setActiveView('all');
-    setDeleteWishlistConfirm(null); showToast('Wishlist deleted. Vendors kept.');
-  };
-
-  const renameWishlist = async (id, name) => {
-    await supabase.from('wishlists').update({ name }).eq('id', id);
-    setWishlists(w => w.map(x => x.id === id ? { ...x, name } : x));
-    setRenamingWishlist(null);
-  };
-
-  const currentVendors = activeView === 'all' ? orderedVendors : orderedVendors.filter(v => (wishlistVendors[parseInt(activeView)] || []).includes(v.id));
-  const total = vendors.length;
-  const coreCount = vendors.filter(v => v.vendor_type === 'Core').length;
-  const primeCount = vendors.filter(v => v.vendor_type === 'Prime').length;
-  const emailsSent = vendors.filter(v => v.email_sent === 'Yes').length;
-  const withEmail = vendors.filter(v => v.email).length;
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16 }}>
-      <div style={{ width: 40, height: 40, border: `3px solid ${C.primaryBorder}`, borderTop: `3px solid ${C.primary}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-      <div style={{ fontFamily: 'Inter', color: C.primary, fontSize: 15, fontWeight: 600, fontStyle: 'italic' }}>Vincit qui se vincit</div>
+    <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, background: '#f9fafb', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ width: 36, height: 36, border: '3px solid #e5e7eb', borderTop: '3px solid #2563eb', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+      <span style={{ color: '#6b7280', fontSize: 14 }}>Loading vendors...</span>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, fontFamily: 'Inter, sans-serif', display: 'flex', flexDirection: 'column' }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}@keyframes slideUp{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:${C.bg}}::-webkit-scrollbar-thumb{background:${C.borderStrong};border-radius:3px}`}</style>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', fontFamily: 'Inter, system-ui, -apple-system, sans-serif', background: '#f9fafb', color: '#111827' }}>
+      <style>{`*{box-sizing:border-box}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:#f3f4f6}::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}::-webkit-scrollbar-thumb:hover{background:#9ca3af}`}</style>
 
-      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: C.surface, border: `1px solid ${C.border}`, borderLeft: `4px solid ${toast.color}`, borderRadius: 10, padding: '12px 20px', color: C.text, fontFamily: 'Inter', fontSize: 13, fontWeight: 500, zIndex: 9999, boxShadow: '0 8px 32px rgba(0,0,0,0.10)', animation: 'slideUp 0.3s ease' }}>{toast.msg}</div>}
+      {/* TOAST */}
+      {toast && <div style={{ position: 'fixed', bottom: 20, right: 20, background: '#fff', border: `1px solid #e5e7eb`, borderLeft: `4px solid ${toast.color}`, borderRadius: 8, padding: '11px 18px', fontSize: 13, fontWeight: 500, color: '#111827', zIndex: 9999, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', animation: 'fadeIn 0.25s ease' }}>{toast.msg}</div>}
 
-      {/* HEADER — fixed */}
-      <div style={{ background: C.sidebar, position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 28px', borderBottom: `1px solid ${C.sidebarBorder}` }}>
-        <div>
-          <div style={{ fontFamily: 'Inter', fontSize: 17, fontWeight: 800, color: '#fff', fontStyle: 'italic', letterSpacing: '-0.3px' }}><span style={{ color: '#60a5fa' }}>Vincit</span> qui se vincit</div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', letterSpacing: 1.5, textTransform: 'uppercase' }}>IT Staffing · ConsultAdd {syncing ? <span style={{ color: '#fbbf24' }}>· saving</span> : <span style={{ color: '#4ade80' }}>· live</span>}</div>
+      {/* TOPBAR */}
+      <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '0 24px', height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div>
+            <span style={{ fontWeight: 800, fontSize: 16, color: '#111827', fontStyle: 'italic' }}>Vincit</span>
+            <span style={{ fontWeight: 600, fontSize: 16, color: '#6b7280', fontStyle: 'italic' }}> qui se vincit</span>
+          </div>
+          <span style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#15803d', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 20 }}>
+            {syncing ? '⟳ saving' : '● live'}
+          </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowCSV(true)} style={{ padding: '7px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}><Upload size={13} /> Import CSV</button>
-          <button onClick={() => setShowEmail(true)} style={{ padding: '7px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 500 }}>Templates</button>
-          <button onClick={() => { setEditingVendor(null); setModal('add'); }} style={{ padding: '7px 18px', borderRadius: 8, background: C.primary, border: 'none', color: '#fff', cursor: 'pointer', fontFamily: 'Inter', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}><Plus size={14} /> Add Vendor</button>
+          {lastImportIds.length > 0 && <button onClick={handleUndo} style={{ padding: '6px 12px', border: '1px solid #fcd34d', borderRadius: 6, background: '#fffbeb', color: '#92400e', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600 }}>↩ Undo Import</button>}
+          <button onClick={() => setShowCSV(true)} style={{ padding: '6px 14px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500 }}>↑ Import CSV</button>
+          <button onClick={() => setShowTemplates(true)} style={{ padding: '6px 14px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500 }}>Templates</button>
+          <button onClick={() => { const b = new Blob([JSON.stringify(vendors, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'vendors_backup.json'; a.click(); }} style={{ padding: '6px 14px', border: '1px solid #d1d5db', borderRadius: 6, background: '#fff', color: '#374151', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 500 }}>↓ Export</button>
+          <button onClick={() => { setEditingVendor(null); setShowVendorModal(true); }} style={{ padding: '6px 16px', border: 'none', borderRadius: 6, background: '#2563eb', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>+ Add Vendor</button>
         </div>
       </div>
 
-      {/* BODY BELOW HEADER */}
-      <div style={{ display: 'flex', flex: 1, paddingTop: 56, height: '100vh' }}>
-
-        {/* SIDEBAR — fixed, scrollable */}
-        <div style={{ width: 220, background: C.surface, borderRight: `1px solid ${C.border}`, position: 'fixed', top: 56, bottom: 0, left: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* SIDEBAR */}
+        <div style={{ width: 200, background: '#fff', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflowY: 'auto', flexShrink: 0 }}>
           {/* STATS */}
-          <div style={{ padding: '16px 14px 8px', borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ padding: '14px 16px', borderBottom: '1px solid #f3f4f6' }}>
             {[
-              { label: 'Total Vendors', value: total, icon: '🏢', color: C.primary },
-              { label: 'Core Vendors', value: coreCount, icon: '🏠', color: C.core, tip: 'original 74' },
-              { label: 'Prime Vendors', value: primeCount, icon: '⭐', color: C.gold },
-              { label: 'Wishlists', value: wishlists.length, icon: '📋', color: C.purple },
-              { label: 'Have Email', value: withEmail, icon: '📧', color: C.teal },
-              { label: 'Emailed', value: emailsSent, icon: '✅', color: C.success },
+              { l: 'Total Vendors', v: total, c: '#2563eb' },
+              { l: 'Core (Original 74)', v: coreC, c: '#059669' },
+              { l: 'Prime', v: primeC, c: '#d97706' },
+              { l: 'Have Email', v: withEmail, c: '#0891b2' },
+              { l: 'Emailed', v: emailsSent, c: '#15803d' },
+              { l: 'Wishlists', v: wishlists.length, c: '#7c3aed' },
             ].map(s => (
-              <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: `1px solid ${C.bg}` }}>
-                <span style={{ fontSize: 16, flexShrink: 0 }}>{s.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: s.color, fontFamily: 'Inter', lineHeight: 1 }}>{s.value}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{s.label}{s.tip && <span style={{ color: s.color, marginLeft: 4 }}>({s.tip})</span>}</div>
-                </div>
+              <div key={s.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f9fafb' }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>{s.l}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: s.c }}>{s.v}</span>
               </div>
             ))}
           </div>
 
           {/* VIEWS */}
           <div>
-            <div style={{ padding: '10px 14px 6px', fontSize: 10, color: C.textMuted, fontFamily: 'Inter', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Views</div>
-            <button onClick={() => setActiveView('all')} style={{ display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left', background: activeView === 'all' ? C.primaryLight : 'transparent', border: 'none', borderBottom: `1px solid ${C.border}`, color: activeView === 'all' ? C.primary : C.textSecondary, fontFamily: 'Inter', fontSize: 13, fontWeight: activeView === 'all' ? 600 : 400, cursor: 'pointer' }}>
-              🌐 All Vendors <span style={{ float: 'right', fontSize: 12, color: activeView === 'all' ? C.primary : C.textMuted, fontWeight: 600 }}>{total}</span>
+            <div style={{ padding: '10px 16px 4px', fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.8 }}>Views</div>
+            <button onClick={() => setActiveView('all')} style={{ display: 'block', width: '100%', padding: '9px 16px', textAlign: 'left', border: 'none', borderBottom: '1px solid #f3f4f6', background: activeView === 'all' ? '#eff6ff' : 'transparent', color: activeView === 'all' ? '#2563eb' : '#374151', fontSize: 13, fontWeight: activeView === 'all' ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+              All Vendors <span style={{ float: 'right', fontSize: 12, color: activeView === 'all' ? '#2563eb' : '#9ca3af', fontWeight: 600 }}>{total}</span>
             </button>
           </div>
 
           {/* WISHLISTS */}
           <div>
-            <div style={{ padding: '10px 14px 6px', fontSize: 10, color: C.textMuted, fontFamily: 'Inter', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '10px 16px 4px', fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               Wishlists
-              <button onClick={() => setShowCSV(true)} style={{ background: C.primaryLight, border: `1px solid ${C.primaryBorder}`, color: C.primary, cursor: 'pointer', borderRadius: 6, padding: '2px 8px', fontSize: 14, lineHeight: 1 }}>+</button>
+              <button onClick={() => setShowCSV(true)} style={{ fontSize: 16, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: '0 2px', lineHeight: 1 }}>+</button>
             </div>
-            {wishlists.length === 0 && <div style={{ padding: '8px 14px 10px', fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>No wishlists.<br /><span style={{ color: C.primary, cursor: 'pointer' }} onClick={() => setShowCSV(true)}>Import CSV →</span></div>}
             {wishlists.map(w => {
-              const isActive = activeView === w.id.toString();
-              const count = (wishlistVendors[w.id] || []).length;
+              const isAct = activeView === w.id.toString();
+              const cnt = (wlVendors[w.id] || []).length;
               return (
-                <div key={w.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                  {renamingWishlist === w.id
-                    ? <input autoFocus defaultValue={w.name} onBlur={e => renameWishlist(w.id, e.target.value)} onKeyDown={e => e.key === 'Enter' && renameWishlist(w.id, e.target.value)} style={{ width: '100%', padding: '10px 14px', background: C.primaryLight, border: 'none', color: C.text, fontFamily: 'Inter', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+                <div key={w.id} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                  {renamingWL === w.id
+                    ? <input autoFocus defaultValue={w.name} onBlur={e => renameWishlist(w.id, e.target.value)} onKeyDown={e => e.key === 'Enter' && renameWishlist(w.id, e.target.value)} style={{ width: '100%', padding: '8px 16px', border: 'none', borderBottom: '1px solid #93c5fd', outline: 'none', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', background: '#eff6ff' }} />
                     : <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <button onClick={() => setActiveView(w.id.toString())} style={{ flex: 1, padding: '10px 14px', textAlign: 'left', background: isActive ? C.primaryLight : 'transparent', border: 'none', color: isActive ? C.primary : C.textSecondary, fontFamily: 'Inter', fontSize: 13, fontWeight: isActive ? 600 : 400, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          📋 {w.name.length > 14 ? w.name.substring(0, 14) + '…' : w.name}
-                          <span style={{ float: 'right', fontSize: 12, color: isActive ? C.primary : C.textMuted, fontWeight: 600 }}>{count}</span>
+                        <button onClick={() => setActiveView(w.id.toString())} style={{ flex: 1, padding: '9px 16px', textAlign: 'left', border: 'none', background: isAct ? '#eff6ff' : 'transparent', color: isAct ? '#2563eb' : '#374151', fontSize: 13, fontWeight: isAct ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {w.name.length > 15 ? w.name.substring(0, 15) + '…' : w.name}
+                          <span style={{ float: 'right', fontSize: 11, color: isAct ? '#2563eb' : '#9ca3af', fontWeight: 600 }}>{cnt}</span>
                         </button>
-                        <div style={{ paddingRight: 6, display: 'flex', gap: 2, flexShrink: 0 }}>
-                          <button onClick={() => setRenamingWishlist(w.id)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', padding: '3px 4px', borderRadius: 4, display: 'flex' }} onMouseEnter={e => e.currentTarget.style.color = C.primary} onMouseLeave={e => e.currentTarget.style.color = C.textMuted}><Edit2 size={11} /></button>
-                          <button onClick={() => setDeleteWishlistConfirm(w.id)} style={{ background: 'none', border: 'none', color: C.textMuted, cursor: 'pointer', padding: '3px 4px', borderRadius: 4, display: 'flex' }} onMouseEnter={e => e.currentTarget.style.color = C.danger} onMouseLeave={e => e.currentTarget.style.color = C.textMuted}><Trash2 size={11} /></button>
+                        <div style={{ display: 'flex', gap: 0, paddingRight: 6, flexShrink: 0 }}>
+                          <button onClick={() => setRenamingWL(w.id)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 11, padding: '2px 4px' }} title="Rename">✏</button>
+                          <button onClick={() => setDelWL(w.id)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: 11, padding: '2px 4px' }} title="Delete" onMouseEnter={e => e.currentTarget.style.color = '#dc2626'} onMouseLeave={e => e.currentTarget.style.color = '#9ca3af'}>✕</button>
                         </div>
                       </div>
                   }
-                  {deleteWishlistConfirm === w.id && (
-                    <div style={{ padding: '10px 14px', background: C.dangerLight, borderTop: `1px solid ${C.dangerBorder}` }}>
-                      <div style={{ fontSize: 12, color: C.danger, marginBottom: 8, fontWeight: 500 }}>Delete "{w.name}"?<br /><span style={{ color: C.textMuted, fontWeight: 400 }}>Vendors stay in All Vendors</span></div>
+                  {delWL === w.id && (
+                    <div style={{ padding: '10px 14px', background: '#fef2f2', borderTop: '1px solid #fecaca' }}>
+                      <div style={{ fontSize: 12, color: '#dc2626', marginBottom: 8 }}>Delete "{w.name}"? Vendors stay in All.</div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => deleteWishlist(w.id)} style={{ padding: '4px 12px', background: C.danger, border: 'none', color: '#fff', borderRadius: 6, cursor: 'pointer', fontFamily: 'Inter', fontSize: 12, fontWeight: 600 }}>Delete</button>
-                        <button onClick={() => setDeleteWishlistConfirm(null)} style={{ padding: '4px 10px', background: C.surface, border: `1px solid ${C.border}`, color: C.textSecondary, borderRadius: 6, cursor: 'pointer', fontFamily: 'Inter', fontSize: 12 }}>Cancel</button>
+                        <button onClick={() => deleteWishlist(w.id)} style={{ padding: '4px 10px', background: '#dc2626', border: 'none', color: '#fff', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>Delete</button>
+                        <button onClick={() => setDelWL(null)} style={{ padding: '4px 9px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 5, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>Cancel</button>
                       </div>
                     </div>
                   )}
                 </div>
               );
             })}
-            <button onClick={() => setShowCSV(true)} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: 'transparent', border: 'none', color: C.primary, fontFamily: 'Inter', fontSize: 12, cursor: 'pointer', fontWeight: 500 }}>+ Import CSV → New Wishlist</button>
-          </div>
-
-          {/* THOUGHTS */}
-          <div style={{ padding: 12, marginTop: 4 }}>
-            <ThoughtsWidget />
-          </div>
-
-          {/* ACTIONS */}
-          <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 'auto' }}>
-            <div style={{ padding: '8px 14px 4px', fontSize: 10, color: C.textMuted, fontFamily: 'Inter', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Actions</div>
-            {[
-              { label: '📤 Import CSV', action: () => setShowCSV(true) },
-              { label: '📧 Email Templates', action: () => setShowEmail(true) },
-              { label: '💾 Export Backup', action: () => { const b = new Blob([JSON.stringify(vendors, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'vendors_backup.json'; a.click(); } },
-            ].map(({ label, action }) => (
-              <button key={label} onClick={action} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: 'transparent', border: 'none', borderTop: `1px solid ${C.border}`, color: C.textSecondary, fontFamily: 'Inter', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
-                onMouseEnter={e => e.currentTarget.style.background = C.surfaceHover}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                {label}
-              </button>
-            ))}
+            {wishlists.length === 0 && <div style={{ padding: '8px 16px', fontSize: 12, color: '#9ca3af' }}>No wishlists yet.<br /><span style={{ color: '#2563eb', cursor: 'pointer' }} onClick={() => setShowCSV(true)}>Import CSV →</span></div>}
+            <button onClick={() => setShowCSV(true)} style={{ display: 'block', width: '100%', padding: '8px 16px', textAlign: 'left', border: 'none', background: 'transparent', color: '#2563eb', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}>+ New Wishlist</button>
           </div>
         </div>
 
-        {/* MAIN CONTENT — scrollable */}
-        <div style={{ marginLeft: 220, flex: 1, padding: '24px 28px', overflowY: 'auto', height: '100%' }}>
-          <div style={{ marginBottom: 16 }}>
-            <h2 style={{ margin: 0, fontFamily: 'Inter', fontSize: 20, color: C.text, fontWeight: 700 }}>
-              {activeView === 'all' ? '🌐 All Vendors' : `📋 ${wishlists.find(w => w.id.toString() === activeView)?.name || 'Wishlist'}`}
-            </h2>
-            <p style={{ margin: '4px 0 0', fontSize: 13, color: C.textMuted, fontFamily: 'Inter' }}>
-              {currentVendors.length} vendors · Drag ⠿ to reorder rows · Select rows → Bulk Tag any field
-            </p>
+        {/* MAIN */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* TOOLBAR */}
+          <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* SUB TABS */}
+              {[{ k:'all', l:'All', c: currentVendors.length },{ k:'core', l:'🏠 Core', c: currentVendors.filter(v=>v.vendor_type==='Core').length },{ k:'prime', l:'⭐ Prime', c: currentVendors.filter(v=>v.vendor_type==='Prime').length },{ k:'normal', l:'● Normal', c: currentVendors.filter(v=>v.vendor_type==='Normal').length }].map(t => (
+                <button key={t.k} onClick={() => setSubTab(t.k)} style={{ padding: '5px 12px', border: `1px solid ${subTab===t.k ? '#2563eb' : '#e5e7eb'}`, borderRadius: 6, background: subTab===t.k ? '#eff6ff' : '#fff', color: subTab===t.k ? '#2563eb' : '#374151', fontSize: 12, fontWeight: subTab===t.k ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  {t.l} <span style={{ marginLeft: 4, background: subTab===t.k ? '#dbeafe' : '#f3f4f6', borderRadius: 10, padding: '1px 6px', fontSize: 11, color: subTab===t.k ? '#1d4ed8' : '#6b7280' }}>{t.c}</span>
+                </button>
+              ))}
+
+              <div style={{ borderLeft: '1px solid #e5e7eb', height: 24, margin: '0 4px' }} />
+
+              {/* SEARCH */}
+              <div style={{ position: 'relative' }}>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ padding: '6px 10px 6px 30px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', outline: 'none', width: 220 }} onFocus={e => e.target.style.borderColor = '#3b82f6'} onBlur={e => e.target.style.borderColor = '#d1d5db'} />
+                <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', fontSize: 13 }}>🔍</span>
+              </div>
+              <span style={{ fontSize: 12, color: '#9ca3af' }}>{filtered.length}/{currentVendors.length}</span>
+
+              <button onClick={() => setShowFilters(f => !f)} style={{ padding: '5px 12px', border: `1px solid ${showFilters || filters.length > 0 ? '#3b82f6' : '#e5e7eb'}`, borderRadius: 6, background: showFilters || filters.length > 0 ? '#eff6ff' : '#fff', color: showFilters || filters.length > 0 ? '#2563eb' : '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}>
+                ⚙ Filters {filters.length > 0 && <span style={{ background: '#2563eb', color: '#fff', borderRadius: 10, padding: '0 5px', fontSize: 10, marginLeft: 4 }}>{filters.length}</span>}
+              </button>
+              <button onClick={() => setShowTS(f => !f)} style={{ padding: '5px 12px', border: `1px solid ${showTS ? '#3b82f6' : '#e5e7eb'}`, borderRadius: 6, background: showTS ? '#eff6ff' : '#fff', color: showTS ? '#2563eb' : '#374151', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}>🕐 Dates</button>
+            </div>
           </div>
 
-          <VendorTable
-            vendors={currentVendors}
-            onUpdate={updateVendor}
-            onEdit={v => { setEditingVendor(v); setModal('edit'); }}
-            onDelete={deleteVendor}
-            onBulkDelete={bulkDelete}
-            onBulkTag={bulkTag}
-            onUndo={handleUndo}
-            canUndo={lastImportIds.length > 0}
-            onReorder={handleReorder}
-          />
+          {/* TABLE AREA */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
+            {showFilters && <FilterPanel filters={filters} setFilters={setFilters} conj={conj} setConj={setConj} onClose={() => setShowFilters(false)} />}
+            {selected.size > 0 && (
+              <BulkBar count={selected.size} filteredCount={filtered.length} allSel={allSel}
+                onSelAll={() => setSelected(new Set(filtered.map(v => v.id)))}
+                onClear={() => setSelected(new Set())}
+                onBulkTag={(f, v) => bulkTag([...selected], f, v)}
+                onBulkDel={() => bulkDelete([...selected])} />
+            )}
+
+            <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: colW.drag, padding: '9px 6px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', position: 'relative' }}><ResizeHandle onResize={d => setColW('drag', d)} /></th>
+                      <th style={{ width: colW.num, padding: '9px 8px', background: '#f9fafb', borderBottom: '2px solid #e5e7eb', textAlign: 'center', position: 'relative' }}>
+                        <input type="checkbox" checked={allSel} onChange={toggleAll} style={{ cursor: 'pointer', accentColor: '#2563eb' }} />
+                        <ResizeHandle onResize={d => setColW('num', d)} />
+                      </th>
+                      <TH wKey="name" col="name">#  Name</TH>
+                      <TH wKey="company" col="company">Company</TH>
+                      <TH wKey="title" col="title">Title</TH>
+                      <TH wKey="email" col="email">Email</TH>
+                      <TH wKey="phone" col="phone">Phone</TH>
+                      <TH wKey="type" col="vendor_type">Type</TH>
+                      <TH wKey="emailed" col="email_sent">Emailed</TH>
+                      <TH wKey="followup" col="follow_up">Follow-Up</TH>
+                      <TH wKey="called" col="call_done">Called</TH>
+                      <TH wKey="role" col="resume_role">Resume Role</TH>
+                      {showTS && <TH wKey="created" col="created_at">Created</TH>}
+                      {showTS && <TH wKey="updated" col="updated_at">Updated</TH>}
+                      <TH wKey="actions">Actions</TH>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((v, i) => {
+                      const isSel = selected.has(v.id), isExp = expanded === v.id;
+                      return (
+                        <React.Fragment key={v.id}>
+                          <tr style={{ background: isSel ? '#eff6ff' : i % 2 === 0 ? '#fff' : '#fafafa', borderBottom: isExp ? 'none' : '1px solid #f3f4f6' }}
+                            onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = '#f0f7ff'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = isSel ? '#eff6ff' : i%2===0 ? '#fff' : '#fafafa'; }}>
+                            <td style={{ padding: '8px 6px', textAlign: 'center', color: '#9ca3af', fontSize: 13, cursor: 'grab', width: colW.drag }} title="Drag to reorder">⠿</td>
+                            <td style={{ padding: '8px 8px', textAlign: 'center', width: colW.num }}>
+                              <input type="checkbox" checked={isSel} onChange={() => toggleSel(v.id)} style={{ cursor: 'pointer', accentColor: '#2563eb' }} />
+                            </td>
+                            <td style={{ padding: '8px 10px', width: colW.name }}>
+                              <span style={{ fontSize: 11, color: '#9ca3af', marginRight: 6 }}>{i+1}</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{v.name}</span>
+                            </td>
+                            <td style={{ padding: '8px 10px', width: colW.company }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: '#2563eb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.company}</div>
+                              {v.website && <a href={v.website.startsWith('http') ? v.website : `https://${v.website}`} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: '#0891b2', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.website.replace(/https?:\/\/(www\.)?/, '').substring(0, 22)}</a>}
+                            </td>
+                            <td style={{ padding: '8px 10px', width: colW.title, fontSize: 12, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.title || '—'}</td>
+                            <td style={{ padding: '8px 10px', width: colW.email }}>
+                              {v.email ? <a href={`mailto:${v.email}`} style={{ fontSize: 12, color: '#0891b2', textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.email}</a> : <span style={{ color: '#d1d5db', fontSize: 12 }}>—</span>}
+                            </td>
+                            <td style={{ padding: '8px 10px', width: colW.phone, fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.phone || <span style={{ color: '#d1d5db' }}>—</span>}</td>
+                            <td style={{ padding: '8px 10px', width: colW.type }}><SelectPill value={v.vendor_type || ''} onChange={val => updateVendor(v.id, 'vendor_type', val)} options={T_OPT} styleMap={T_STYLE} /></td>
+                            <td style={{ padding: '8px 10px', width: colW.emailed }}><SelectPill value={v.email_sent || ''} onChange={val => updateVendor(v.id, 'email_sent', val)} options={S_OPT} styleMap={S_STYLE} /></td>
+                            <td style={{ padding: '8px 10px', width: colW.followup }}><SelectPill value={v.follow_up || ''} onChange={val => updateVendor(v.id, 'follow_up', val)} options={S_OPT} styleMap={S_STYLE} /></td>
+                            <td style={{ padding: '8px 10px', width: colW.called }}><SelectPill value={v.call_done || ''} onChange={val => updateVendor(v.id, 'call_done', val)} options={S_OPT} styleMap={S_STYLE} /></td>
+                            <td style={{ padding: '8px 10px', width: colW.role }}>
+                              {editCell === v.id
+                                ? <input autoFocus defaultValue={v.resume_role} onBlur={e => { updateVendor(v.id, 'resume_role', e.target.value); setEditCell(null); }} onKeyDown={e => e.key === 'Enter' && e.target.blur()} style={{ width: '100%', border: '1px solid #3b82f6', borderRadius: 4, padding: '3px 6px', fontSize: 12, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
+                                : <div onClick={() => setEditCell(v.id)} style={{ fontSize: 12, color: v.resume_role ? '#7c3aed' : '#d1d5db', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minHeight: 20 }}>{v.resume_role || '+ Add'}</div>
+                              }
+                            </td>
+                            {showTS && <td style={{ padding: '8px 10px', width: colW.created, fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }}>{formatDate(v.created_at)}</td>}
+                            {showTS && <td style={{ padding: '8px 10px', width: colW.updated, fontSize: 11, color: '#6b7280', whiteSpace: 'nowrap' }}>{formatDate(v.updated_at)}</td>}
+                            <td style={{ padding: '8px 10px', width: colW.actions }}>
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button onClick={() => setExpanded(isExp ? null : v.id)} style={{ border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff', color: '#6b7280', cursor: 'pointer', padding: '3px 6px', fontSize: 11, fontFamily: 'inherit' }}>{isExp ? '▲' : '▼'}</button>
+                                <button onClick={() => { setEditingVendor(v); setShowVendorModal(true); }} style={{ border: '1px solid #e5e7eb', borderRadius: 4, background: '#fff', color: '#6b7280', cursor: 'pointer', padding: '3px 6px', fontSize: 11, fontFamily: 'inherit' }}>Edit</button>
+                                <button onClick={() => setDelConfirm(v.id)} style={{ border: '1px solid #fca5a5', borderRadius: 4, background: '#fef2f2', color: '#dc2626', cursor: 'pointer', padding: '3px 6px', fontSize: 11, fontFamily: 'inherit' }}>Del</button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExp && (
+                            <tr style={{ background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+                              <td colSpan={showTS ? 16 : 14} style={{ padding: '12px 20px 14px 60px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                                  <div>
+                                    <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Notes</div>
+                                    <NotesCell value={v.notes} onSave={val => updateVendor(v.id, 'notes', val)} />
+                                  </div>
+                                  <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 2 }}>
+                                    {v.website && <div>🔗 <a href={v.website.startsWith('http') ? v.website : `https://${v.website}`} target="_blank" rel="noreferrer" style={{ color: '#2563eb' }}>{v.website}</a></div>}
+                                    {v.created_at && <div>📅 Added: <strong style={{ color: '#111827' }}>{formatDate(v.created_at)}</strong></div>}
+                                    {v.updated_at && <div>🕐 Updated: <strong style={{ color: '#111827' }}>{formatDate(v.updated_at)}</strong></div>}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                          {delConfirm === v.id && (
+                            <tr style={{ background: '#fef2f2' }}>
+                              <td colSpan={showTS ? 16 : 14} style={{ padding: '9px 16px' }}>
+                                <span style={{ fontSize: 13, color: '#dc2626' }}>Delete <strong>{v.name}</strong>? This removes from all views permanently. &nbsp;</span>
+                                <button onClick={() => { deleteVendor(v.id); setDelConfirm(null); }} style={{ border: 'none', borderRadius: 5, background: '#dc2626', color: '#fff', padding: '5px 14px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, marginRight: 8 }}>Yes, Delete</button>
+                                <button onClick={() => setDelConfirm(null)} style={{ border: '1px solid #d1d5db', borderRadius: 5, background: '#fff', color: '#374151', padding: '5px 12px', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12 }}>Cancel</button>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {filtered.length === 0 && (
+                <div style={{ padding: 48, textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>
+                  {filters.length > 0 ? <><div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>No vendors match these filters.<br /><button onClick={() => setFilters([])} style={{ marginTop: 12, padding: '6px 16px', border: '1px solid #93c5fd', borderRadius: 6, background: '#eff6ff', color: '#2563eb', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>Clear Filters</button></> : 'No vendors found.'}
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '10px 0', fontSize: 12, color: '#9ca3af', textAlign: 'right' }}>
+              Showing {filtered.length} of {currentVendors.length} vendors · Drag right edge of column header to resize
+            </div>
+          </div>
         </div>
       </div>
 
-      {(modal === 'add' || modal === 'edit') && <VendorModal vendor={modal === 'edit' ? editingVendor : null} onSave={saveVendor} onClose={() => { setModal(null); setEditingVendor(null); }} />}
-      {showEmail && <EmailTemplatesPanel onClose={() => setShowEmail(false)} />}
+      {showVendorModal && <VendorModal vendor={editingVendor} onSave={saveVendor} onClose={() => { setShowVendorModal(false); setEditingVendor(null); }} />}
       {showCSV && <CSVModal onClose={() => setShowCSV(false)} onImport={handleCSVImport} wishlists={wishlists} />}
+      {showTemplates && <TemplatesModal onClose={() => setShowTemplates(false)} />}
     </div>
   );
 }
